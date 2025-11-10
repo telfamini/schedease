@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SchedEase Debug</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f8fafc;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h1 { color: #1e293b; margin-bottom: 30px; }
+        h2 { color: #475569; margin-top: 30px; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 10px 10px 0;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        button:hover {
+            background: #2563eb;
+            transform: translateY(-1px);
+        }
+        .danger {
+            background: #dc2626;
+        }
+        .danger:hover {
+            background: #b91c1c;
+        }
+        .success {
+            background: #059669;
+        }
+        .success:hover {
+            background: #047857;
+        }
+        .result {
+            background: #f1f5f9;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            border-left: 4px solid #3b82f6;
+        }
+        .error {
+            background: #fee2e2;
+            border-left-color: #dc2626;
+            color: #991b1b;
+        }
+        .success-msg {
+            background: #d1fae5;
+            border-left-color: #059669;
+            color: #065f46;
+        }
+        .info {
+            background: #dbeafe;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border-left: 4px solid #3b82f6;
+        }
+        .status { font-weight: bold; margin: 10px 0; }
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 14px;
+            margin: 8px 0;
+        }
+        input:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+        label {
+            font-weight: 600;
+            color: #475569;
+            display: block;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 SchedEase Login Debug Tool</h1>
+        
+        <div class="status">
+            Backend Status: <span id="backendStatus">Checking...</span>
+        </div>
+
+        <h2>1️⃣ Test Backend Connection</h2>
+        <button onclick="testBackend()">Test Backend Health</button>
+        <button onclick="testLogin()">Test Login API</button>
+        <div id="backendResult"></div>
+
+        <h2>2️⃣ Check LocalStorage</h2>
+        <button onclick="checkStorage()">Check Storage</button>
+        <button onclick="clearStorage()" class="danger">Clear All Storage</button>
+        <div id="storageResult"></div>
+
+        <h2>3️⃣ Manual Login Test</h2>
+        <div class="info">
+            <strong>Default Credentials:</strong><br>
+            Email: admin@university.edu<br>
+            Password: password
+        </div>
+        <label>Email:</label>
+        <input type="email" id="testEmail" value="admin@university.edu">
+        <label>Password:</label>
+        <input type="password" id="testPassword" value="password">
+        <button onclick="manualLogin()" class="success">Test Login</button>
+        <div id="loginResult"></div>
+
+        <h2>4️⃣ Environment Check</h2>
+        <button onclick="checkEnvironment()">Check API URL</button>
+        <div id="envResult"></div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3001';
+
+        async function testBackend() {
+            const resultDiv = document.getElementById('backendResult');
+            resultDiv.innerHTML = '<div class="result">Testing backend health...</div>';
+            
+            try {
+                const response = await fetch(`${API_URL}/health`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `<div class="result success-msg">✅ Backend is healthy!\n${JSON.stringify(data, null, 2)}</div>`;
+                    document.getElementById('backendStatus').innerHTML = '<span style="color: #059669">✅ Online</span>';
+                } else {
+                    resultDiv.innerHTML = `<div class="result error">❌ Backend returned error\n${JSON.stringify(data, null, 2)}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result error">❌ Cannot connect to backend!\nError: ${error.message}\n\nMake sure backend is running on port 3001</div>`;
+                document.getElementById('backendStatus').innerHTML = '<span style="color: #dc2626">❌ Offline</span>';
+            }
+        }
+
+        async function testLogin() {
+            const resultDiv = document.getElementById('backendResult');
+            resultDiv.innerHTML = '<div class="result">Testing login endpoint...</div>';
+            
+            try {
+                const response = await fetch(`${API_URL}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'admin@university.edu',
+                        password: 'password'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    resultDiv.innerHTML = `<div class="result success-msg">✅ Login endpoint works!\nUser: ${data.user.name}\nRole: ${data.user.role}\nToken: ${data.token.substring(0, 50)}...</div>`;
+                } else {
+                    resultDiv.innerHTML = `<div class="result error">❌ Login failed\n${JSON.stringify(data, null, 2)}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result error">❌ Login test failed!\nError: ${error.message}</div>`;
+            }
+        }
+
+        function checkStorage() {
+            const resultDiv = document.getElementById('storageResult');
+            const authToken = localStorage.getItem('authToken');
+            const currentUser = localStorage.getItem('currentUser');
+            const redirecting = sessionStorage.getItem('redirecting');
+            
+            let result = '📦 LocalStorage Contents:\n\n';
+            result += `authToken: ${authToken ? authToken.substring(0, 50) + '...' : '❌ NOT FOUND'}\n\n`;
+            result += `currentUser: ${currentUser ? currentUser.substring(0, 100) + '...' : '❌ NOT FOUND'}\n\n`;
+            result += `sessionStorage.redirecting: ${redirecting || '❌ NOT FOUND'}`;
+            
+            const className = !authToken ? 'error' : 'success-msg';
+            resultDiv.innerHTML = `<div class="result ${className}">${result}</div>`;
+        }
+
+        function clearStorage() {
+            localStorage.clear();
+            sessionStorage.clear();
+            document.getElementById('storageResult').innerHTML = '<div class="result success-msg">✅ All storage cleared!\n\nYou can now try logging in again.</div>';
+        }
+
+        async function manualLogin() {
+            const email = document.getElementById('testEmail').value;
+            const password = document.getElementById('testPassword').value;
+            const resultDiv = document.getElementById('loginResult');
+            
+            resultDiv.innerHTML = '<div class="result">Attempting login...</div>';
+            
+            try {
+                const response = await fetch(`${API_URL}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // Save to localStorage like the real app does
+                    localStorage.setItem('authToken', data.token);
+                    localStorage.setItem('currentUser', JSON.stringify(data.user));
+                    
+                    resultDiv.innerHTML = `<div class="result success-msg">✅ Login successful!\n\nUser: ${data.user.name}\nRole: ${data.user.role}\nEmail: ${data.user.email}\n\nToken saved to localStorage!\n\n<strong>Now go to: <a href="/">http://localhost:3000</a></strong></div>`;
+                } else {
+                    resultDiv.innerHTML = `<div class="result error">❌ Login failed!\n\n${JSON.stringify(data, null, 2)}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result error">❌ Login error!\n\nError: ${error.message}\n\nMake sure backend is running!</div>`;
+            }
+        }
+
+        function checkEnvironment() {
+            const resultDiv = document.getElementById('envResult');
+            
+            let result = '🌍 Environment Variables:\n\n';
+            result += `Window Location: ${window.location.origin}\n`;
+            result += `API URL (hardcoded): ${API_URL}\n`;
+            result += `Expected Frontend: http://localhost:3000\n`;
+            result += `Expected Backend: http://localhost:3001\n`;
+            
+            resultDiv.innerHTML = `<div class="result">${result}</div>`;
+        }
+
+        // Auto-check backend on load
+        window.addEventListener('load', () => {
+            testBackend();
+            checkStorage();
+        });
+    </script>
+</body>
+</html>

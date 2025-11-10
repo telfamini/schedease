@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clear Auth Data</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #dc2626;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #b91c1c;
+        }
+        .success {
+            background: #059669;
+        }
+        .success:hover {
+            background: #047857;
+        }
+        .info {
+            background: #f3f4f6;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            color: #374151;
+        }
+        pre {
+            background: #1f2937;
+            color: #f9fafb;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+        }
+        h1 { color: #1f2937; }
+        h2 { color: #374151; margin-top: 30px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 SchedEase Auth Debug Tool</h1>
+        
+        <div class="info">
+            <strong>Current localStorage data:</strong>
+            <pre id="currentData">Loading...</pre>
+        </div>
+
+        <h2>Actions:</h2>
+        
+        <button onclick="clearAuth()">
+            🗑️ Clear Auth Data
+        </button>
+        
+        <button onclick="showData()" class="success">
+            🔄 Refresh Data
+        </button>
+        
+        <button onclick="goToApp()" class="success">
+            🏠 Go to App
+        </button>
+
+        <div id="result" style="margin-top: 20px;"></div>
+
+        <h2>Login Credentials:</h2>
+        <div class="info">
+            <strong>Admin:</strong> admin@university.edu / password<br>
+            <strong>Instructor:</strong> instructor@university.edu / password<br>
+            <strong>Student:</strong> student@university.edu / password
+        </div>
+    </div>
+
+    <script>
+        function showData() {
+            const data = {
+                authToken: localStorage.getItem('authToken'),
+                currentUser: localStorage.getItem('currentUser'),
+                redirecting: sessionStorage.getItem('redirecting')
+            };
+            
+            document.getElementById('currentData').textContent = JSON.stringify(data, null, 2);
+            
+            if (!data.authToken) {
+                document.getElementById('result').innerHTML = 
+                    '<div class="info" style="background: #fef3c7; color: #92400e;">⚠️ No token found. You need to login.</div>';
+            } else {
+                document.getElementById('result').innerHTML = 
+                    '<div class="info" style="background: #d1fae5; color: #065f46;">✅ Token exists.</div>';
+            }
+        }
+
+        function clearAuth() {
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('currentUser');
+            sessionStorage.removeItem('redirecting');
+            
+            document.getElementById('result').innerHTML = 
+                '<div class="info" style="background: #d1fae5; color: #065f46;">✅ Auth data cleared! Click "Go to App" to login.</div>';
+            
+            showData();
+        }
+
+        function goToApp() {
+            window.location.href = '/';
+        }
+
+        // Show data on load
+        showData();
+    </script>
+</body>
+</html>
