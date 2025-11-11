@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 
 // MongoDB connection configuration
 const dbConfig = {
-  mongoUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/schedease_db',
+  mongoUri: process.env.MONGODB_URI || 'mongodb+srv://telfamini_db_user:6dt5Svh4V7ufRC4d@schedease.zqyud1j.mongodb.net/',
   options: {
     serverSelectionTimeoutMS: 5000,
     socketTimeoutMS: 45000,
@@ -384,7 +384,7 @@ const scheduleRequestSchema = new mongoose.Schema({
   },
   requestType: {
     type: String,
-    enum: ['room_change', 'time_change', 'schedule_conflict'],
+    enum: ['room_change', 'time_change', 'schedule_conflict', 'borrow_schedule'],
     required: true
   },
   courseId: {
@@ -395,6 +395,14 @@ const scheduleRequestSchema = new mongoose.Schema({
   roomId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Room'
+  },
+  // If borrowing an existing schedule, store original owner
+  originalInstructorId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Instructor'
+  },
+  originalInstructorName: {
+    type: String
   },
   // Specific date for the request (YYYY-MM-DD)
   date: {
@@ -417,7 +425,7 @@ const scheduleRequestSchema = new mongoose.Schema({
   },
   purpose: {
     type: String,
-    enum: ['make-up class', 'quiz', 'unit test'],
+    enum: ['make-up class', 'quiz', 'unit test', 'borrow schedule'],
     trim: true
   },
   notes: {
@@ -442,8 +450,20 @@ const scheduleRequestSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'under_review', 'approved', 'rejected'],
+    enum: ['pending', 'pending_instructor_approval', 'under_review', 'approved', 'rejected'],
     default: 'pending'
+  },
+  // Original instructor approval for borrow requests
+  originalInstructorApproved: {
+    type: Boolean,
+    default: null // null = not yet reviewed, true = approved, false = rejected
+  },
+  originalInstructorApprovedAt: {
+    type: Date
+  },
+  originalInstructorRejectionReason: {
+    type: String,
+    trim: true
   },
   createdAt: {
     type: Date,
@@ -517,6 +537,34 @@ const scheduleSchema = new mongoose.Schema({
   instructorName: String,
   roomName: String,
   building: String,
+  // Borrowing metadata
+  isBorrowedInstance: {
+    type: Boolean,
+    default: false
+  },
+  borrowRequestId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'ScheduleRequest'
+  },
+  borrowedFromScheduleId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Schedule'
+  },
+  borrowOriginalInstructorId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Instructor'
+  },
+  borrowOriginalInstructorName: String,
+  borrowDate: String,
+  borrowedInstances: {
+    type: [{
+      date: String,
+      requestId: { type: mongoose.Schema.Types.ObjectId, ref: 'ScheduleRequest' },
+      replacementInstructorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Instructor' },
+      replacementInstructorName: String
+    }],
+    default: []
+  },
   createdAt: {
     type: Date,
     default: Date.now

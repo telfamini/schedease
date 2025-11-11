@@ -25,7 +25,7 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 import { toast } from 'sonner';
-import { CheckCircle, XCircle, Clock } from 'lucide-react';
+import { Clock } from 'lucide-react';
 import apiService from '../services/api';
 import { Badge } from '../ui/badge';
 
@@ -55,17 +55,7 @@ export function AdminScheduleRequests() {
     }
   };
 
-  const handleProcess = async (requestId: string, action: 'approve' | 'reject') => {
-    try {
-      await apiService.processScheduleRequest(requestId, action);
-      toast.success(`Schedule request ${action}ed successfully`);
-      setShowDetails(false);
-      loadRequests(); // Reload the list
-    } catch (error) {
-      console.error(`Failed to ${action} schedule request:`, error);
-      toast.error(`Failed to ${action} schedule request`);
-    }
-  };
+  // Removed handleProcess - admin can only view schedules now
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -84,6 +74,10 @@ export function AdminScheduleRequests() {
     if (!schedule) return 'N/A';
     return `${schedule.dayOfWeek} ${schedule.startTime} - ${schedule.endTime}`;
   };
+
+  const filteredRequests = filters.status === 'all'
+    ? requests
+    : requests.filter((req: any) => req.status === filters.status);
 
   return (
     <div className="space-y-6">
@@ -114,23 +108,38 @@ export function AdminScheduleRequests() {
             <TableHeader>
               <TableRow>
                 <TableHead>Instructor</TableHead>
+                <TableHead>Request</TableHead>
                 <TableHead>Room</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Time</TableHead>
-                <TableHead>Purpose</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Conflict</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {requests.map((request) => (
+              {filteredRequests.map((request: any) => (
                 <TableRow key={request._id || request.id}>
                   <TableCell>{request.instructorName || request.instructorId?.userId?.name || 'Unknown'}</TableCell>
-                  <TableCell>{request.roomId?.name || request.roomName || '—'}</TableCell>
-                  <TableCell>{request.date || request.dayOfWeek || '—'}</TableCell>
-                  <TableCell>{request.startTime} - {request.endTime}</TableCell>
-                  <TableCell>{request.purpose || request.details || request.requestType || '—'}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col gap-1">
+                      <span className="font-medium">
+                        {request.requestType === 'borrow_schedule'
+                          ? `Borrow schedule${request.originalInstructorName ? ` from ${request.originalInstructorName}` : ''}`
+                          : (request.requestType || request.purpose || 'Schedule change')}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        {request.purpose || request.details || '—'}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>{request.roomId?.name || request.roomName || request.scheduleId?.roomName || '—'}</TableCell>
+                  <TableCell>{request.date ? new Date(request.date).toLocaleDateString() : (request.dayOfWeek || '—')}</TableCell>
+                  <TableCell>
+                    {request.startTime && request.endTime
+                      ? `${request.startTime} - ${request.endTime}`
+                      : formatSchedule(request.scheduleId)}
+                  </TableCell>
                   <TableCell>{getStatusBadge(request.status)}</TableCell>
                   <TableCell>
                     {request.conflict_flag ? (
@@ -140,43 +149,21 @@ export function AdminScheduleRequests() {
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setSelectedRequest(request);
-                          setShowDetails(true);
-                        }}
-                      >
-                        <Clock className="h-4 w-4 mr-1" />
-                        Details
-                      </Button>
-                      {request.status === 'pending' && (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="success"
-                            onClick={() => handleProcess(request._id || request.id, 'approve')}
-                          >
-                            <CheckCircle className="h-4 w-4 mr-1" />
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => handleProcess(request._id || request.id, 'reject')}
-                          >
-                            <XCircle className="h-4 w-4 mr-1" />
-                            Reject
-                          </Button>
-                        </>
-                      )}
-                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setSelectedRequest(request);
+                        setShowDetails(true);
+                      }}
+                    >
+                      <Clock className="h-4 w-4 mr-1" />
+                      View Details
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
-              {requests.length === 0 && (
+              {filteredRequests.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center py-4">
                     {loading ? 'Loading...' : 'No schedule requests found'}
@@ -205,17 +192,42 @@ export function AdminScheduleRequests() {
                   <p className="text-sm text-gray-500">{selectedRequest.instructorName || selectedRequest.instructorId?.userId?.name || 'Unknown'}</p>
                 </div>
                 <div>
-                  <h4 className="font-medium">Course</h4>
-                  <p className="text-sm text-gray-500">{selectedRequest.courseName || selectedRequest.courseId?.name || '—'}</p>
+                  <h4 className="font-medium">Request Type</h4>
+                  <p className="text-sm text-gray-500">
+                    {selectedRequest.requestType === 'borrow_schedule'
+                      ? `Borrow schedule${selectedRequest.originalInstructorName ? ` from ${selectedRequest.originalInstructorName}` : ''}`
+                      : (selectedRequest.requestType || selectedRequest.purpose || 'Schedule change')}
+                  </p>
                 </div>
                 <div>
-                  <h4 className="font-medium">Current Schedule</h4>
-                  <p className="text-sm text-gray-500">—</p>
+                  <h4 className="font-medium">Course</h4>
+                  <p className="text-sm text-gray-500">{selectedRequest.courseName || selectedRequest.courseId?.name || '—'}</p>
                 </div>
                 <div>
                   <h4 className="font-medium">Requested Schedule</h4>
                   <p className="text-sm text-gray-500">
                     {formatSchedule({ dayOfWeek: selectedRequest.dayOfWeek || '—', startTime: selectedRequest.startTime, endTime: selectedRequest.endTime })}
+                  </p>
+                </div>
+                <div>
+                  <h4 className="font-medium">Current Assignment</h4>
+                  <p className="text-sm text-gray-500">
+                    {formatSchedule({
+                      dayOfWeek: selectedRequest.scheduleId?.dayOfWeek || '—',
+                      startTime: selectedRequest.scheduleId?.startTime,
+                      endTime: selectedRequest.scheduleId?.endTime
+                    })} in {selectedRequest.scheduleId?.roomName || selectedRequest.roomId?.name || '—'}
+                    {selectedRequest.originalInstructorName && (
+                      <span className="block text-xs text-gray-400">
+                        Instructor: {selectedRequest.originalInstructorName}
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <h4 className="font-medium">Borrow Date</h4>
+                  <p className="text-sm text-gray-500">
+                    {selectedRequest.date ? new Date(selectedRequest.date).toLocaleDateString() : '—'}
                   </p>
                 </div>
                 <div className="col-span-2">
@@ -235,24 +247,14 @@ export function AdminScheduleRequests() {
                 </div>
               )}
 
-              {selectedRequest.status === 'pending' && (
-                <DialogFooter className="flex justify-end gap-2 mt-6">
-                  <Button
-                    variant="success"
-                    onClick={() => handleProcess(selectedRequest.id, 'approve')}
-                  >
-                    <CheckCircle className="h-4 w-4 mr-1" />
-                    Approve
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    onClick={() => handleProcess(selectedRequest.id, 'reject')}
-                  >
-                    <XCircle className="h-4 w-4 mr-1" />
-                    Reject
-                  </Button>
-                </DialogFooter>
-              )}
+              <DialogFooter className="flex justify-end gap-2 mt-6">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowDetails(false)}
+                >
+                  Close
+                </Button>
+              </DialogFooter>
             </div>
           )}
         </DialogContent>

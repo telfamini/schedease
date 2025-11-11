@@ -172,6 +172,17 @@ class ApiService {
     });
   }
 
+  async getBorrowRequestsForInstructor(instructorId: string) {
+    return this.makeRequest(`/schedule-requests/borrow-requests/${instructorId}`);
+  }
+
+  async approveBorrowRequestByInstructor(requestId: string, approved: boolean, rejectionReason?: string) {
+    return this.makeRequest(`/schedule-requests/${requestId}/instructor-approve`, {
+      method: 'POST',
+      body: JSON.stringify({ approved, rejectionReason })
+    });
+  }
+
   // --------------------
   // Courses endpoints
   // --------------------
@@ -272,6 +283,10 @@ class ApiService {
         return [];
       }
     }
+  }
+
+  async getInstructorSubjects(instructorId: string) {
+    return this.makeRequest(`/instructors/${instructorId}/subjects`);
   }
 
   // --------------------

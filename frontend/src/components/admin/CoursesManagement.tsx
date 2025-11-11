@@ -19,6 +19,7 @@ interface SubjectItem {
   units?: number;
   schoolYear?: string;
   semester?: string;
+  instructorId?: string | null;
   instructorName?: string;
   day?: string;
   time?: string;
@@ -45,11 +46,53 @@ export function CoursesManagement() {
   });
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [instructors, setInstructors] = useState<Array<{ _id: string; name: string; email?: string }>>([]);
+  const [updatingInstructor, setUpdatingInstructor] = useState<string | null>(null);
   const [importState, setImportState] = useState<{ open: boolean; year?: YearLevel; file: File | null; importing: boolean; result: any | null }>({ open: false, year: undefined, file: null, importing: false, result: null });
 
   useEffect(() => {
     loadAllYears();
+    loadInstructors();
   }, []);
+
+  const loadInstructors = async () => {
+    try {
+      const response = await apiService.getInstructors();
+      const instructorsList = response?.instructors || response?.data || response || [];
+      const normalized = instructorsList.map((inst: any) => ({
+        _id: inst._id || inst.id,
+        name: inst.name || inst.userId?.name || inst.userId?.userId?.name || 'Unknown',
+        email: inst.email || inst.userId?.email || ''
+      }));
+      setInstructors(normalized);
+    } catch (error) {
+      console.error('Failed to load instructors:', error);
+      toast.error('Failed to load instructors');
+    }
+  };
+
+  const handleInstructorChange = async (courseId: string, instructorId: string | null) => {
+    if (!courseId) return;
+    
+    setUpdatingInstructor(courseId);
+    try {
+      const updateData: any = {};
+      if (instructorId && instructorId !== 'none') {
+        updateData.instructorId = instructorId;
+      } else {
+        updateData.instructorId = null;
+      }
+
+      await apiService.updateCourse(courseId, updateData);
+      toast.success('Instructor updated successfully');
+      await loadAllYears();
+    } catch (error: any) {
+      console.error('Failed to update instructor:', error);
+      toast.error(error?.message || 'Failed to update instructor');
+    } finally {
+      setUpdatingInstructor(null);
+    }
+  };
 
   const loadAllYears = async () => {
     try {
@@ -81,6 +124,7 @@ export function CoursesManagement() {
             units: course.credits,
             schoolYear: course.academicYear || '2024-2025',
             semester: course.semester,
+            instructorId: course.instructorId?._id || course.instructorId || null,
             instructorName: course.instructorName || course.instructorId?.userId?.name || 'Not Assigned',
             day: undefined,
             time: course.duration ? `${course.duration} min` : undefined,
@@ -228,7 +272,27 @@ export function CoursesManagement() {
                             </TableCell>
                             <TableCell>{s.units ?? '-'}</TableCell>
                             <TableCell className="text-xs text-muted-foreground">{s.time || '-'}</TableCell>
-                            <TableCell>{s.instructorName || 'Not Assigned'}</TableCell>
+                            <TableCell>
+                              <Select
+                                value={s.instructorId || 'none'}
+                                onValueChange={(value) => handleInstructorChange(s._id!, value === 'none' ? null : value)}
+                                disabled={updatingInstructor === s._id}
+                              >
+                                <SelectTrigger className="w-[180px] h-8 text-sm">
+                                  <SelectValue placeholder="Select instructor">
+                                    {s.instructorName || 'Not Assigned'}
+                                  </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent className="bg-white border border-gray-200 shadow-lg">
+                                  <SelectItem value="none">Not Assigned</SelectItem>
+                                  {instructors.map((instructor) => (
+                                    <SelectItem key={instructor._id} value={instructor._id}>
+                                      {instructor.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
                           </TableRow>
                         ))
                       ) : (

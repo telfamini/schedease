@@ -13,7 +13,7 @@ import { getInstructors, getInstructorById, getInstructorSubjects } from './api/
 import { getCourses, getCourseById, getInstructorCourses, createCourse, updateCourse, deleteCourse } from './api/courses.js';
 import { getAvailableRooms, getRoomById, getRooms, createRoom, updateRoom, deleteRoom } from './api/rooms.js';
 import { getUsers, getUserById, createUser, updateUser, deleteUser } from './api/users.js';
-import { getScheduleRequests, getInstructorScheduleRequests, createScheduleRequest, updateScheduleRequestStatus, approveScheduleRequest, rejectScheduleRequest, deleteScheduleRequest } from './api/schedule-requests.js';
+import { getScheduleRequests, getInstructorScheduleRequests, createScheduleRequest, updateScheduleRequestStatus, approveScheduleRequest, rejectScheduleRequest, deleteScheduleRequest, approveBorrowRequestByInstructor, getBorrowRequestsForInstructor } from './api/schedule-requests.js';
 import { getStudents } from './api/admin/students.js';
 import { importSubjects } from './api/admin/subjects-import.js';
 import { getMySubjects } from './api/student.js';
@@ -118,10 +118,12 @@ app.delete('/api/enrollments/:id', requireAuth, requireAdmin, deleteEnrollment);
 // Schedule Request routes
 app.get('/api/schedule-requests', requireAuth, getScheduleRequests);
 app.get('/api/schedule-requests/instructor/:instructorId', requireAuth, getInstructorScheduleRequests);
+app.get('/api/schedule-requests/borrow-requests/:instructorId', requireAuth, getBorrowRequestsForInstructor);
 app.post('/api/schedule-requests', requireAuth, createScheduleRequest);
 app.put('/api/schedule-requests/:requestId', requireAuth, requireAdmin, updateScheduleRequestStatus);
 app.post('/api/schedule-requests/:requestId/approve', requireAuth, requireAdmin, approveScheduleRequest);
 app.post('/api/schedule-requests/:requestId/reject', requireAuth, requireAdmin, rejectScheduleRequest);
+app.post('/api/schedule-requests/:requestId/instructor-approve', requireAuth, approveBorrowRequestByInstructor);
 app.delete('/api/schedule-requests/:requestId', requireAuth, deleteScheduleRequest);
 // Schedule routes are now handled by the router
 

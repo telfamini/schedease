@@ -104,15 +104,22 @@ export async function updateCourse(req, res) {
       }
     }
 
-    const course = await Course.findByIdAndUpdate(
-      id, 
-      { ...updateData, updatedAt: new Date() }, 
-      { new: true, runValidators: true }
-    );
-
+    // Use findById and save to trigger pre-save middleware (for instructorName denormalization)
+    const course = await Course.findById(id);
     if (!course) {
       return res.status(404).json({ success: false, message: 'Course not found' });
     }
+
+    // Update fields
+    Object.keys(updateData).forEach(key => {
+      if (key !== '_id' && key !== '__v') {
+        course[key] = updateData[key];
+      }
+    });
+    course.updatedAt = new Date();
+
+    // Save to trigger pre-save middleware
+    await course.save();
 
     // Return populated course
     const populated = await Course.findById(course._id).populate({ path: 'instructorId', populate: { path: 'userId', model: 'User' } });
