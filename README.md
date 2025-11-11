@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # schedease - Automated Class & Room Scheduling System
 
 A comprehensive web-based scheduling system for academic institutions with role-based authentication and full-featured dashboards for administrators, instructors, and students.
@@ -189,3 +190,6 @@ The system uses a comprehensive MySQL schema with tables for:
 ## License
 
 This project is licensed under the MIT License.
+=======
+# schedease
+>>>>>>> c97549b208bc40652429f77002618dc7419f72f3
