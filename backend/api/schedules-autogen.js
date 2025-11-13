@@ -319,20 +319,19 @@ function groupCoursesByYearAndSection(courses) {
 }
 
 /**
- * Initialize time slot matrix for rooms/instructors
+ * Initialize time slot matrix for rooms/instructors robustly.
+ * Ensures each item has entries for all validDays even if no availability initially present.
  */
 function initializeTimeSlotMatrix(items, validDays) {
   const matrix = {};
-  
-  for (const item of items) {
-    const itemId = item._id.toString();
+  if (!Array.isArray(validDays)) validDays = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  for (const item of (items || [])) {
+    const itemId = String(item._id || item.id || item).toString();
     matrix[itemId] = {};
-    
     for (const day of validDays) {
-      matrix[itemId][day] = []; // Array of { start, end } time ranges
+      matrix[itemId][day] = matrix[itemId][day] || []; // array of { start, end }
     }
   }
-  
   return matrix;
 }
 
@@ -372,118 +371,117 @@ async function scheduleCourseToBestSlot(params) {
     slotDuration,
     semesterStart,
     semesterEnd,
-    maxSubjectsPerDay = 3 // Default to 3 subjects max per day
+    maxSubjectsPerDay = 3
   } = params;
 
   const startMinutes = toMinutes(startTime);
   const endMinutes = toMinutes(endTime);
-  
-  // IMPORTANT: Use exact course duration from database - do NOT shorten or modify
-  // Only admins can manually adjust durations when editing schedules
-  const courseDuration = course.duration || 90; // Default to 90 minutes only if not set
+  const courseDuration = Number(course.duration || 90);
 
-  // Find suitable instructor
+  // find an instructor (prefer assigned)
   const instructor = findSuitableInstructor(course, instructors);
-  if (!instructor) {
-    return {
-      success: false,
-      reason: 'No suitable instructor available'
-    };
-  }
+  if (!instructor) return { success: false, reason: 'No suitable instructor available' };
 
-  // Find suitable rooms
+  // find and sort suitable rooms
   const suitableRooms = findSuitableRooms(course, rooms);
-  if (suitableRooms.length === 0) {
-    return {
-      success: false,
-      reason: 'No suitable room available'
-    };
-  }
+  if (suitableRooms.length === 0) return { success: false, reason: 'No suitable room available' };
 
-  // Try each day
-  for (const day of validDays) {
-    // Skip if this day-of-week doesn't occur within the 14-week semester range
-    if (!isDayInSemesterRange(day, semesterStart, semesterEnd)) {
-      continue;
-    }
+  // Try each day in provided validDays (usually single-day list from caller)
+  for (const day of (validDays || [])) {
+    if (!isDayInSemesterRange(day, semesterStart, semesterEnd)) continue;
 
-    // Define lunch break period based on day
-    // Monday-Tuesday, Thursday-Saturday: 12:00 PM - 1:00 PM
-    // Wednesday: 12:00 PM - 2:00 PM
-    const LUNCH_START = toMinutes('12:00'); // 720 minutes
-    const LUNCH_END = day === 'Wednesday' ? toMinutes('14:00') : toMinutes('13:00'); // 840 or 780 minutes
+    // lunch break window
+    const LUNCH_START = toMinutes('12:00');
+    const LUNCH_END = day === 'Wednesday' ? toMinutes('14:00') : toMinutes('13:00');
 
-    // NOTE: Max classes per day check is done in the OUTER scheduling loop
-    // This function only checks time/room/instructor conflicts
-
-    // Try each time slot
     for (let timeSlot = startMinutes; timeSlot + courseDuration <= endMinutes; timeSlot += slotDuration) {
       const slotEnd = timeSlot + courseDuration;
 
-      // Skip if class overlaps with lunch break
-      if (rangesOverlap(timeSlot, slotEnd, LUNCH_START, LUNCH_END)) {
-        // Log lunch break conflict for debugging
-        const lunchPeriod = day === 'Wednesday' ? '12:00-14:00' : '12:00-13:00';
-        console.log(`⏸️  Lunch break conflict: ${course.code} on ${day} at ${toHHMM(timeSlot)}-${toHHMM(slotEnd)} (${lunchPeriod})`);
-        continue;
-      }
+      if (rangesOverlap(timeSlot, slotEnd, LUNCH_START, LUNCH_END)) continue;
 
-      // Check instructor availability
-      if (!isInstructorAvailable(instructor, day, timeSlot, slotEnd, instructorTimeSlots)) {
-        continue;
-      }
+      // instructor availability and existing occupancy
+      if (!isInstructorAvailable(instructor, day, timeSlot, slotEnd, instructorTimeSlots)) continue;
 
-      // Check section availability (no student conflicts)
-      if (!isSectionAvailable(sectionKey, day, timeSlot, slotEnd, sectionTimeSlots)) {
-        continue;
-      }
+      // section availability (no student conflicts)
+      if (!isSectionAvailable(sectionKey, day, timeSlot, slotEnd, sectionTimeSlots)) continue;
 
-      // Try each suitable room
-      for (const room of suitableRooms) {
-        if (isRoomAvailable(room, day, timeSlot, slotEnd, roomTimeSlots)) {
-          // Found a valid slot! Mark it as occupied
-          markTimeSlotOccupied(room._id.toString(), day, timeSlot, slotEnd, roomTimeSlots);
-          markTimeSlotOccupied(instructor._id.toString(), day, timeSlot, slotEnd, instructorTimeSlots);
-          markSectionTimeSlotOccupied(sectionKey, day, timeSlot, slotEnd, course._id, sectionTimeSlots);
+      // select a room candidate using best-fit
+      const roomCandidate = pickBestRoomForCourse(course, suitableRooms);
+      if (!roomCandidate) continue;
 
-          // Calculate actual date if semester start is provided
-          const scheduleDate = getFirstOccurrenceDate(day, semesterStart);
-          
-          // Log successful scheduling
-          console.log(`✅ Scheduled: ${course.code} | ${sectionKey} | ${day} ${toHHMM(timeSlot)}-${toHHMM(slotEnd)} | ${room.name}${scheduleDate ? ' | ' + scheduleDate.toISOString().split('T')[0] : ''}`);
-
-          return {
-            success: true,
-            schedule: {
-              courseId: course._id,
-              courseCode: course.code,
-              courseName: course.name,
-              instructorId: instructor._id,
-              instructorName: instructor.userId?.name || 'Unknown',
-              roomId: room._id,
-              roomName: room.name,
-              building: room.building || 'Main Building',
-              dayOfWeek: day,
-              scheduleDate: scheduleDate, // Add actual date
-              startTime: toHHMM(timeSlot),
-              endTime: toHHMM(slotEnd),
-              duration: courseDuration, // Preserve exact course duration from database
-              yearLevel,
-              section,
-              semester,
-              year,
-              academicYear
-            }
-          };
+      // verify the chosen room is available
+      if (!isRoomAvailable(roomCandidate, day, timeSlot, slotEnd, roomTimeSlots)) {
+        // try next suitable room (if any) — remove the unavailable room temporarily from candidates
+        const nextRooms = suitableRooms.filter(r => String(r._id) !== String(roomCandidate._id));
+        for (const rc of nextRooms) {
+          if (isRoomAvailable(rc, day, timeSlot, slotEnd, roomTimeSlots)) {
+            // use rc
+            markTimeSlotOccupied(rc._id.toString(), day, timeSlot, slotEnd, roomTimeSlots);
+            markTimeSlotOccupied(instructor._id.toString(), day, timeSlot, slotEnd, instructorTimeSlots);
+            markSectionTimeSlotOccupied(sectionKey, day, timeSlot, slotEnd, course._id, sectionTimeSlots);
+            const scheduleDate = getFirstOccurrenceDate(day, semesterStart);
+            return {
+              success: true,
+              schedule: {
+                courseId: course._id,
+                courseCode: course.code,
+                courseName: course.name,
+                instructorId: instructor._id,
+                instructorName: instructor.userId?.name || 'Unknown',
+                roomId: rc._id,
+                roomName: rc.name,
+                building: rc.building || 'Main Building',
+                dayOfWeek: day,
+                scheduleDate,
+                startTime: toHHMM(timeSlot),
+                endTime: toHHMM(slotEnd),
+                duration: courseDuration,
+                yearLevel,
+                section,
+                semester,
+                year,
+                academicYear
+              }
+            };
+          }
         }
+        // no available rooms at this timeslot, continue to next timeslot
+        continue;
       }
+
+      // If chosen room is available, occupy and return
+      markTimeSlotOccupied(roomCandidate._id.toString(), day, timeSlot, slotEnd, roomTimeSlots);
+      markTimeSlotOccupied(instructor._id.toString(), day, timeSlot, slotEnd, instructorTimeSlots);
+      markSectionTimeSlotOccupied(sectionKey, day, timeSlot, slotEnd, course._id, sectionTimeSlots);
+      const scheduleDate = getFirstOccurrenceDate(day, semesterStart);
+
+      return {
+        success: true,
+        schedule: {
+          courseId: course._id,
+          courseCode: course.code,
+          courseName: course.name,
+          instructorId: instructor._id,
+          instructorName: instructor.userId?.name || 'Unknown',
+          roomId: roomCandidate._id,
+          roomName: roomCandidate.name,
+          building: roomCandidate.building || 'Main Building',
+          dayOfWeek: day,
+          scheduleDate,
+          startTime: toHHMM(timeSlot),
+          endTime: toHHMM(slotEnd),
+          duration: courseDuration,
+          yearLevel,
+          section,
+          semester,
+          year,
+          academicYear
+        }
+      };
     }
   }
 
-  return {
-    success: false,
-    reason: 'No available time slot found'
-  };
+  return { success: false, reason: 'No available time slot found' };
 }
 
 /**
@@ -502,34 +500,49 @@ function findSuitableInstructor(course, instructors) {
 }
 
 /**
- * Find suitable rooms for a course
+ * Find suitable rooms for a course and sort by best-fit (smallest sufficient capacity first).
+ * Avoid auditoriums by default and match room.type and equipment requirements.
  */
 function findSuitableRooms(course, rooms) {
-  const requiredCapacity = course.requiredCapacity || 50;
+  const requiredCapacity = Number(course.requiredCapacity || course.studentsEnrolled || 50);
   const courseType = course.type || 'lecture';
+  const requirements = Array.isArray(course.specialRequirements) ? course.specialRequirements : [];
 
-  return rooms.filter(room => {
-    // Exclude auditoriums from auto-generation (reserved for manual admin scheduling)
+  // Filter rooms that meet basic constraints
+  const candidates = rooms.filter(room => {
+    // Exclude auditoriums for normal auto-assignment unless explicitly required
     if (room.type === 'auditorium') return false;
 
     // Capacity check
-    if (room.capacity < requiredCapacity) return false;
+    if ((room.capacity || 0) < requiredCapacity) return false;
 
-    // Type matching
+    // Type matching (labs must go to lab-like rooms)
     if (courseType === 'lab' && room.type !== 'computer_lab' && room.type !== 'laboratory') {
       return false;
     }
 
     // Equipment requirements
-    if (course.specialRequirements && course.specialRequirements.length > 0) {
-      const hasAllEquipment = course.specialRequirements.every(req => 
-        room.equipment && room.equipment.includes(req)
-      );
-      if (!hasAllEquipment) return false;
+    if (requirements.length > 0) {
+      const hasAll = requirements.every(req => (room.equipment || []).includes(req));
+      if (!hasAll) return false;
     }
 
     return true;
   });
+
+  // Sort by closest-fit capacity (ascending) then prefer computer_lab for labs
+  candidates.sort((a, b) => {
+    const capDiff = (a.capacity || 0) - (b.capacity || 0);
+    if (capDiff !== 0) return capDiff;
+    // prefer computer_lab for labs
+    if (courseType === 'lab') {
+      if (a.type === 'computer_lab' && b.type !== 'computer_lab') return -1;
+      if (b.type === 'computer_lab' && a.type !== 'computer_lab') return 1;
+    }
+    return 0;
+  });
+
+  return candidates;
 }
 
 /**
@@ -576,18 +589,19 @@ function isSectionAvailable(sectionKey, day, start, end, sectionTimeSlots) {
 }
 
 /**
- * Check if room is available at given time
+ * Check if room is available at given time using the roomTimeSlots occupancy matrix.
+ * Also verifies the provided room object exists in matrix and handles missing keys gracefully.
  */
 function isRoomAvailable(room, day, start, end, roomTimeSlots) {
-  const roomId = room._id.toString();
-  const occupiedSlots = roomTimeSlots[roomId][day];
+  if (!room || !room._id) return false;
+  const roomId = String(room._id);
+  const roomSlots = roomTimeSlots[roomId];
+  if (!roomSlots) return true; // no recorded occupancy -> considered available
 
+  const occupiedSlots = roomSlots[day] || [];
   for (const slot of occupiedSlots) {
-    if (rangesOverlap(start, end, slot.start, slot.end)) {
-      return false;
-    }
+    if (rangesOverlap(start, end, slot.start, slot.end)) return false;
   }
-
   return true;
 }
 

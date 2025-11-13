@@ -16,7 +16,7 @@ import {
   Info
 } from 'lucide-react';
 import { toast } from 'sonner';
-import apiService from '../services/api';
+import { apiService } from '../services/api';
 
 interface SystemSettings {
   general: {

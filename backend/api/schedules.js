@@ -34,7 +34,7 @@ function isWithin(start, end, tStart, tEnd) {
 async function getSchedules(req, res) {
   try {
     const { semester, academicYear } = req.query;
-    let filter = {};
+    let filter = { isDeleted: false }; // Exclude soft-deleted schedules
     
     if (semester) filter.semester = semester;
     if (academicYear) filter.academicYear = academicYear;
@@ -64,7 +64,7 @@ async function getInstructorSchedules(req, res) {
     const { instructorId } = req.params;
     const { semester, academicYear } = req.query;
     
-    let filter = { instructorId };
+    let filter = { instructorId, isDeleted: false };
     if (semester) filter.semester = semester;
     if (academicYear) filter.academicYear = academicYear;
 
@@ -93,7 +93,8 @@ async function getStudentSchedules(req, res) {
     }
 
     let filter = { 
-      courseId: { $in: student.enrolledCourses.map(course => course._id) }
+      courseId: { $in: student.enrolledCourses.map(course => course._id) },
+      isDeleted: false
     };
     if (semester) filter.semester = semester;
     if (academicYear) filter.academicYear = academicYear;
@@ -123,7 +124,8 @@ async function getStudentSchedules(req, res) {
 function validateScheduleData(scheduleData) {
   console.log('Validating schedule data:', scheduleData); // Debug log
 
-  const requiredFields = ['courseId', 'instructorId', 'roomId', 'dayOfWeek', 'startTime', 'endTime', 'semester', 'year'];
+  // instructorId and roomId should be optional (allow TBA)
+  const requiredFields = ['courseId', 'dayOfWeek', 'startTime', 'endTime', 'semester', 'year'];
   const missingFields = requiredFields.filter(field => !scheduleData[field]);
   
   // First check for missing fields
@@ -141,6 +143,7 @@ function validateScheduleData(scheduleData) {
   // Validate and convert MongoDB ObjectIds
   ['courseId', 'instructorId', 'roomId'].forEach(field => {
     let value = scheduleData[field];
+    if (value === undefined || value === null || value === '') return; // optional for instructor/room
     if (typeof value === 'string') {
       // Try to clean up the ID by removing any non-hex characters
       value = value.replace(/[^0-9a-fA-F]/g, '');
@@ -222,7 +225,7 @@ async function createSchedule(req, res) {
       scheduleData.conflicts = [];
     }
 
-      // Convert string IDs to ObjectIds with proper validation
+    // Convert string IDs to ObjectIds with proper validation
     const idFields = ['courseId', 'instructorId', 'roomId'];
     for (const field of idFields) {
       if (scheduleData[field]) {
@@ -236,27 +239,29 @@ async function createSchedule(req, res) {
           });
         }
       }
-    }  // Verify that the referenced entities exist
-  const [course, instructor, room] = await Promise.all([
-    Course.findById(scheduleData.courseId),
-    Instructor.findById(scheduleData.instructorId),
-    Room.findById(scheduleData.roomId)
-  ]);
+    }
 
-  if (!course || !instructor || !room) {
-    return res.status(400).json({
-      success: false,
-      message: 'Referenced course, instructor, or room not found'
-    });
-  }
+    // Verify that the referenced entities exist where provided (course required)
+    const [course, instructor, room] = await Promise.all([
+      Course.findById(scheduleData.courseId),
+      scheduleData.instructorId ? Instructor.findById(scheduleData.instructorId) : Promise.resolve(null),
+      scheduleData.roomId ? Room.findById(scheduleData.roomId) : Promise.resolve(null)
+    ]);
 
-  // Add denormalized fields for easier display
-  scheduleData.courseCode = course.code;
-  scheduleData.courseName = course.name;
-  scheduleData.instructorName = instructor.userId?.name || 'Unknown Instructor';
-  scheduleData.roomName = room.name;
-  scheduleData.building = room.building;
-  scheduleData.academicYear = `${scheduleData.year}-${Number(scheduleData.year) + 1}`;
+    if (!course) {
+      return res.status(400).json({
+        success: false,
+        message: 'Referenced course not found'
+      });
+    }
+
+    // Add denormalized fields for easier display
+    scheduleData.courseCode = course.code;
+    scheduleData.courseName = course.name;
+    scheduleData.instructorName = instructor?.userId?.name || 'TBA';
+    scheduleData.roomName = room?.name || 'TBA';
+    scheduleData.building = room?.building || undefined;
+    scheduleData.academicYear = `${scheduleData.year}-${Number(scheduleData.year) + 1}`;
   
   // Create the new schedule with all required fields
   const schedule = await Schedule.create(scheduleData);
@@ -346,33 +351,32 @@ async function updateSchedule(req, res) {
       }
     }
 
-    // Fetch related data if IDs are being updated
-    if (updateData.courseId || updateData.instructorId || updateData.roomId) {
+    // Fetch related data if IDs are being updated (populate each independently)
+    if (updateData.courseId) {
       const course = await Course.findById(updateData.courseId);
-      const instructor = await Instructor.findById(updateData.instructorId).populate('userId');
-      const room = await Room.findById(updateData.roomId);
-
-      if (!course || !instructor || !room) {
-        return res.status(400).json({ 
-          success: false, 
-          message: 'Invalid course, instructor, or room ID' 
-        });
+      if (course) {
+        updateData.courseCode = course.code;
+        updateData.courseName = course.name;
       }
-
-      // Add denormalized fields without reassigning updateData
-      Object.assign(updateData, {
-        courseCode: course.code,
-        courseName: course.name,
-        instructorName: instructor.userId?.name || 'Unknown Instructor',
-        roomName: room.name,
-        building: room.building,
-        status,
-        conflicts
-      });
-    } else {
-      updateData.status = status;
-      updateData.conflicts = conflicts;
     }
+    
+    if (updateData.instructorId) {
+      const instructor = await Instructor.findById(updateData.instructorId).populate('userId');
+      if (instructor && instructor.userId) {
+        updateData.instructorName = instructor.userId.name;
+      }
+    }
+    
+    if (updateData.roomId) {
+      const room = await Room.findById(updateData.roomId);
+      if (room) {
+        updateData.roomName = room.name;
+        updateData.building = room.building;
+      }
+    }
+    
+    updateData.status = status;
+    updateData.conflicts = conflicts;
 
     const schedule = await Schedule.findByIdAndUpdate(
       id, 
@@ -404,20 +408,33 @@ async function updateSchedule(req, res) {
   }
 }
 
-// Delete schedule entry
+// Delete schedule entry (soft delete)
 async function deleteSchedule(req, res) {
   try {
     const { id } = req.params;
     
-    const schedule = await Schedule.findByIdAndDelete(id);
+    // Validate the ID format
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid schedule ID format' });
+    }
+    
+    // Perform soft delete by marking as deleted
+    const schedule = await Schedule.findByIdAndUpdate(
+      id,
+      { isDeleted: true, deletedAt: new Date() },
+      { new: true }
+    );
     
     if (!schedule) {
       return res.status(404).json({ success: false, message: 'Schedule not found' });
     }
 
+    console.log(`🗑️ Schedule soft deleted: ${schedule._id} (${schedule.courseCode})`);
+
     res.json({ 
       success: true, 
-      message: 'Schedule deleted successfully' 
+      message: 'Schedule deleted successfully',
+      deletedId: schedule._id
     });
   } catch (error) {
     console.error('Delete schedule error:', error);
@@ -460,8 +477,10 @@ async function checkScheduleConflicts(scheduleData, excludeId = null) {
       };
     }
 
-    // Base query to exclude the current schedule being edited
-    const baseFilter = excludeId ? { _id: { $ne: excludeId } } : {};
+    // Base query to exclude the current schedule being edited and soft-deleted schedules
+    const baseFilter = excludeId 
+      ? { _id: { $ne: excludeId }, isDeleted: false } 
+      : { isDeleted: false };
 
     // Common time filter for all conflict checks
     const timeOverlapFilter = {
@@ -479,34 +498,33 @@ async function checkScheduleConflicts(scheduleData, excludeId = null) {
     // Check for exact duplicates (same course, instructor, room, time, semester, year)
     let exactDuplicate = null;
     try {
-      // First validate the IDs
-      if (!mongoose.Types.ObjectId.isValid(courseId) || 
-          !mongoose.Types.ObjectId.isValid(instructorId) || 
-          !mongoose.Types.ObjectId.isValid(roomId)) {
-        console.log('Invalid IDs provided:', { courseId, instructorId, roomId });
-        throw new Error('Invalid ID format');
-      }
+      // Only check for exact duplicates if all IDs are provided
+      if (courseId && instructorId && roomId &&
+          mongoose.Types.ObjectId.isValid(courseId) && 
+          mongoose.Types.ObjectId.isValid(instructorId) && 
+          mongoose.Types.ObjectId.isValid(roomId)) {
+        
+        // Try to find exact duplicates
+        exactDuplicate = await Schedule.findOne({
+          ...baseFilter,
+          courseId: new mongoose.Types.ObjectId(courseId),
+          instructorId: new mongoose.Types.ObjectId(instructorId),
+          roomId: new mongoose.Types.ObjectId(roomId),
+          dayOfWeek,
+          startTime,
+          endTime,
+          semester,
+          year
+        })
+        .populate('courseId', 'code name')
+        .populate('roomId', 'name building')
+        .lean();
 
-      // Then try to find exact duplicates
-      exactDuplicate = await Schedule.findOne({
-        ...baseFilter,
-        courseId: new mongoose.Types.ObjectId(courseId),
-        instructorId: new mongoose.Types.ObjectId(instructorId),
-        roomId: new mongoose.Types.ObjectId(roomId),
-        dayOfWeek,
-        startTime,
-        endTime,
-        semester,
-        year
-      })
-      .populate('courseId', 'code name')
-      .populate('roomId', 'name building')
-      .lean();
-
-      // Validate that population worked
-      if (exactDuplicate && (!exactDuplicate.courseId || !exactDuplicate.roomId)) {
-        console.log('Population failed:', exactDuplicate);
-        throw new Error('Failed to populate referenced documents');
+        // Validate that population worked
+        if (exactDuplicate && (!exactDuplicate.courseId || !exactDuplicate.roomId)) {
+          console.log('Population failed:', exactDuplicate);
+          throw new Error('Failed to populate referenced documents');
+        }
       }
     } catch (err) {
       console.error('Error fetching exact duplicates:', err);
@@ -690,9 +708,7 @@ router.get('/available-terms', async (req, res) => {
 });
 router.post('/', createSchedule);
 router.put('/:id', updateSchedule);
-router.delete('/:id', deleteSchedule);
-
-// Auto-generate comprehensive semester schedules for all year levels and sections
+router.delete('/:id', deleteSchedule); // Ensure DELETE route is registered
 router.post('/auto-generate', async (req, res) => {
   try {
     const {

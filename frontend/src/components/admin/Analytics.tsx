@@ -3,8 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import { Button } from '../ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Badge } from '../ui/badge';
-import { toast } from 'react-hot-toast';
-import apiService from './apiService';
+import { toast } from 'sonner';
+import { apiService } from '../services/api';
 import { 
   BarChart, 
   TrendingUp, 
@@ -48,50 +48,108 @@ export function Analytics() {
     try {
       setLoading(true);
       
-      // Fetch analytics data from the API
-      const response = await apiService.getAnalytics(dateRange);
-      
-      if (!response.success) {
-        throw new Error('Failed to load analytics data');
-      }
-      
-      // If no data is returned, use fallback mock data
-      if (!response.data || !Object.keys(response.data).length) {
-        const mockData: AnalyticsData = {
-          roomUtilization: {
-            overall: 76,
-            byBuilding: [
-              { name: 'Academic Building A', utilization: 85, color: 'bg-blue-500' },
-              { name: 'Technology Building B', utilization: 72, color: 'bg-green-500' },
-              { name: 'Science Building C', utilization: 68, color: 'bg-purple-500' },
-              { name: 'Library Building', utilization: 89, color: 'bg-orange-500' }
-            ],
-            byType: [
-              { type: 'Classrooms', utilization: 78, rooms: 45 },
-              { type: 'Laboratories', utilization: 82, rooms: 18 },
-              { type: 'Computer Labs', utilization: 91, rooms: 12 },
-              { type: 'Auditoriums', utilization: 45, rooms: 6 }
-            ]
-          },
-          enrollment: {
-            total: 2847,
-            trend: 12.5
-          },
-          scheduling: {
-            efficiency: 87.4
-          },
-          performance: {
-            avgGPA: 3.42
+      // Fetch real data from multiple endpoints
+      const [coursesRes, schedulesRes, roomsRes, studentsRes] = await Promise.all([
+        apiService.getCourses(),
+        apiService.getSchedules(),
+        apiService.getRooms(),
+        apiService.getStudents().catch(() => ({ students: [], data: [] }))
+      ]);
+
+      const courses = coursesRes.courses || coursesRes.data || [];
+      const schedules = schedulesRes.schedules || schedulesRes.data || [];
+      const rooms = roomsRes.rooms || roomsRes.data || [];
+      const students = studentsRes.students || studentsRes.data || [];
+
+      // Calculate real analytics
+      const totalRooms = rooms.length;
+      const scheduledRooms = new Set(schedules.map((s: any) => s.roomId?._id || s.roomId).filter(Boolean)).size;
+      const roomUtilizationOverall = totalRooms > 0 ? Math.round((scheduledRooms / totalRooms) * 100) : 0;
+
+      // Group rooms by building
+      const buildingStats: Record<string, { total: number; used: number }> = {};
+      rooms.forEach((room: any) => {
+        const building = room.building || 'Unknown Building';
+        if (!buildingStats[building]) {
+          buildingStats[building] = { total: 0, used: 0 };
+        }
+        buildingStats[building].total++;
+      });
+
+      schedules.forEach((schedule: any) => {
+        const roomId = schedule.roomId?._id || schedule.roomId;
+        const room = rooms.find((r: any) => r._id === roomId);
+        if (room) {
+          const building = room.building || 'Unknown Building';
+          if (buildingStats[building]) {
+            buildingStats[building].used++;
           }
-        };
-        setData(mockData);
-      } else {
-        setData(response.data as AnalyticsData);
-      }
+        }
+      });
+
+      const colors = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-pink-500'];
+      const byBuilding = Object.entries(buildingStats).map(([name, stats], index) => ({
+        name,
+        utilization: stats.total > 0 ? Math.round((stats.used / stats.total) * 100) : 0,
+        color: colors[index % colors.length]
+      }));
+
+      // Group by room type
+      const typeStats: Record<string, { total: number; used: number }> = {};
+      rooms.forEach((room: any) => {
+        const type = room.type || 'Classroom';
+        if (!typeStats[type]) {
+          typeStats[type] = { total: 0, used: 0 };
+        }
+        typeStats[type].total++;
+      });
+
+      schedules.forEach((schedule: any) => {
+        const roomId = schedule.roomId?._id || schedule.roomId;
+        const room = rooms.find((r: any) => r._id === roomId);
+        if (room) {
+          const type = room.type || 'Classroom';
+          if (typeStats[type]) {
+            typeStats[type].used++;
+          }
+        }
+      });
+
+      const byType = Object.entries(typeStats).map(([type, stats]) => ({
+        type,
+        utilization: stats.total > 0 ? Math.round((stats.used / stats.total) * 100) : 0,
+        rooms: stats.total
+      }));
+
+      const analyticsData: AnalyticsData = {
+        roomUtilization: {
+          overall: roomUtilizationOverall,
+          byBuilding: byBuilding.length > 0 ? byBuilding : [
+            { name: 'No buildings', utilization: 0, color: 'bg-gray-500' }
+          ],
+          byType: byType.length > 0 ? byType : [
+            { type: 'No rooms', utilization: 0, rooms: 0 }
+          ]
+        },
+        enrollment: {
+          total: students.length,
+          trend: 12.5 // This would need historical data
+        },
+        scheduling: {
+          efficiency: schedules.length > 0 && courses.length > 0 
+            ? Math.round((schedules.length / courses.length) * 100) 
+            : 0
+        },
+        performance: {
+          avgGPA: 3.42 // This would come from grades data
+        }
+      };
+
+      setData(analyticsData);
     } catch (error) {
       console.error('Failed to load analytics data:', error);
       toast.error('Failed to load analytics data');
-      // Set mock data as fallback
+      // Set fallback mock data on error
       const mockData: AnalyticsData = {
         roomUtilization: {
           overall: 76,

@@ -258,7 +258,6 @@ export function CoursesManagement() {
                         <TableHead>Section</TableHead>
                         <TableHead>Units</TableHead>
                         <TableHead>Type</TableHead>
-                        <TableHead>Instructor</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -272,32 +271,11 @@ export function CoursesManagement() {
                             </TableCell>
                             <TableCell>{s.units ?? '-'}</TableCell>
                             <TableCell className="text-xs text-muted-foreground">{s.time || '-'}</TableCell>
-                            <TableCell>
-                              <Select
-                                value={s.instructorId || 'none'}
-                                onValueChange={(value) => handleInstructorChange(s._id!, value === 'none' ? null : value)}
-                                disabled={updatingInstructor === s._id}
-                              >
-                                <SelectTrigger className="w-[180px] h-8 text-sm">
-                                  <SelectValue placeholder="Select instructor">
-                                    {s.instructorName || 'Not Assigned'}
-                                  </SelectValue>
-                                </SelectTrigger>
-                                <SelectContent className="bg-white border border-gray-200 shadow-lg">
-                                  <SelectItem value="none">Not Assigned</SelectItem>
-                                  {instructors.map((instructor) => (
-                                    <SelectItem key={instructor._id} value={instructor._id}>
-                                      {instructor.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </TableCell>
                           </TableRow>
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center text-muted-foreground py-4">
+                          <TableCell colSpan={5} className="text-center text-muted-foreground py-4">
                             {searchTerm ? 'No courses match your search' : courses.length === 0 ? 'No courses for this term' : 'No results'}
                           </TableCell>
                         </TableRow>

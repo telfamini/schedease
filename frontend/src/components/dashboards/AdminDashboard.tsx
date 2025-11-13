@@ -5,7 +5,6 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 // Tabs import removed (not used in this file)
 import { LoadingSpinner } from '../ui/LoadingSpinner';
-import { CoursesManagement } from '../admin/CoursesManagement';
 import { RoomsManagement } from '../admin/RoomsManagement';
 import { SchedulesManagement } from '../admin/SchedulesManagement';
 import { UsersManagement } from '../admin/UsersManagement';
@@ -16,6 +15,7 @@ import { AdminScheduleRequests } from '../admin/AdminScheduleRequests';
 import { StudentsManagement } from '../admin/StudentsManagement';
 import { ScheduleBuilder } from '../admin/ScheduleBuilder';
 import { CurriculumFix } from '../admin/CurriculumFix';
+import { InstructorsManagement } from '../admin/InstructorsManagement';
 import { 
   LayoutDashboard, 
   BookOpen, 
@@ -31,7 +31,7 @@ import {
   GraduationCap,
   CalendarDays,
   CalendarPlus,
-  Wrench
+  UserCheck
 } from 'lucide-react';
 import { apiService } from '../services/api';
 import { toast } from 'sonner';
@@ -85,12 +85,6 @@ export function AdminDashboard() {
       active: activeTab === 'schedule-requests'
     },
     {
-      icon: BookOpen,
-      label: 'Courses',
-      onClick: () => setActiveTab('courses'),
-      active: activeTab === 'courses'
-    },
-    {
       icon: MapPin,
       label: 'Rooms',
       onClick: () => setActiveTab('rooms'),
@@ -122,8 +116,14 @@ export function AdminDashboard() {
       active: activeTab === 'students'
     },
     {
-      icon: Wrench,
-      label: 'Curriculum Fix',
+      icon: UserCheck,
+      label: 'Instructors',
+      onClick: () => setActiveTab('instructors'),
+      active: activeTab === 'instructors'
+    },
+    {
+      icon: BookOpen,
+      label: 'Curriculum',
       onClick: () => setActiveTab('curriculum-fix'),
       active: activeTab === 'curriculum-fix'
     },
@@ -214,7 +214,6 @@ export function AdminDashboard() {
       case 'overview': return 'Dashboard Overview';
       case 'enrollments': return 'Enrollment Management';
       case 'schedule-requests': return 'Schedule Requests';
-      case 'courses': return 'Course Management';
       case 'rooms': return 'Room Management';
       case 'schedules': return 'Schedule Management';
       case 'schedule-builder': return 'Schedule Builder';
@@ -222,7 +221,8 @@ export function AdminDashboard() {
       case 'analytics': return 'Analytics & Reports';
       case 'settings': return 'System Settings';
       case 'students': return 'Student Management';
-      case 'curriculum-fix': return 'Curriculum Data Fix';
+      case 'instructors': return 'Instructors Management';
+      case 'curriculum-fix': return 'Curriculum';
       
       default: return 'Admin Dashboard';
     }
@@ -553,12 +553,12 @@ export function AdminDashboard() {
       {activeTab === 'overview' && <OverviewContent />}
       {activeTab === 'enrollments' && <AdminEnrollmentManagement />}
       {activeTab === 'schedule-requests' && <AdminScheduleRequests />}
-      {activeTab === 'courses' && <CoursesManagement />}
       {activeTab === 'rooms' && <RoomsManagement />}
       {activeTab === 'schedules' && <SchedulesManagement />}
       {activeTab === 'schedule-builder' && <ScheduleBuilder />}
       {activeTab === 'users' && <UsersManagement />}
       {activeTab === 'students' && <StudentsManagement />}
+      {activeTab === 'instructors' && <InstructorsManagement />}
       {activeTab === 'curriculum-fix' && <CurriculumFix />}
       
       {activeTab === 'analytics' && <Analytics />}

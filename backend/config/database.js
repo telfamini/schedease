@@ -260,12 +260,28 @@ const courseSchema = new mongoose.Schema({
   },
   section: {
     type: String,
-    trim: true
+    trim: true // A or B
   },
   semester: {
     type: String,
     enum: ['First Term', 'Second Term', 'Third Term'],
     trim: true
+  },
+  // NEW FIELDS: Prerequisite and Equivalent Subject Code
+  prerequisite: {
+    type: String,
+    trim: true,
+    default: null
+  },
+  equivalentSubjectCode: {
+    type: String,
+    trim: true,
+    default: null
+  },
+  schoolYear: {
+    type: String,
+    trim: true,
+    default: null
   },
   createdAt: {
     type: Date,
@@ -353,7 +369,7 @@ const studentSchema = new mongoose.Schema({
   section: {
     type: String,
     required: true,
-    trim: true
+    trim: true // A or B
   },
   enrolledCourses: [{
     type: mongoose.Schema.Types.ObjectId,
@@ -387,11 +403,6 @@ const scheduleRequestSchema = new mongoose.Schema({
     enum: ['room_change', 'time_change', 'schedule_conflict', 'borrow_schedule'],
     required: true
   },
-  courseId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Course'
-  },
-  // Room for which the request is made (room booking)
   roomId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Room'
@@ -485,12 +496,12 @@ const scheduleSchema = new mongoose.Schema({
   instructorId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Instructor',
-    required: true
+    required: false // Optional - allows TBA
   },
   roomId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Room',
-    required: true
+    required: false // Optional - allows TBA
   },
   dayOfWeek: {
     type: String,
@@ -509,6 +520,10 @@ const scheduleSchema = new mongoose.Schema({
   endTime: {
     type: String,
     required: true
+  },
+  duration: {
+    type: Number,
+    required: false // Duration in minutes
   },
   semester: {
     type: String,
@@ -537,6 +552,16 @@ const scheduleSchema = new mongoose.Schema({
   instructorName: String,
   roomName: String,
   building: String,
+  // Cohort assignment
+  yearLevel: {
+    type: String,
+    enum: ['1', '2', '3', '4'],
+    required: false
+  },
+  section: {
+    type: String,
+    required: false
+  },
   // Borrowing metadata
   isBorrowedInstance: {
     type: Boolean,
@@ -564,6 +589,15 @@ const scheduleSchema = new mongoose.Schema({
       replacementInstructorName: String
     }],
     default: []
+  },
+  // Soft delete fields
+  isDeleted: {
+    type: Boolean,
+    default: false
+  },
+  deletedAt: {
+    type: Date,
+    default: null
   },
   createdAt: {
     type: Date,
@@ -622,7 +656,7 @@ enrollmentSchema.pre('save', async function(next) {
   }
 });
 
-// Notification Schema - stores all notifications for users
+// Notification Schema
 const notificationSchema = new mongoose.Schema({
   title: {
     type: String,
@@ -667,17 +701,6 @@ const notificationSchema = new mongoose.Schema({
 notificationSchema.index({ userId: 1, read: 1, createdAt: -1 });
 notificationSchema.index({ role: 1, read: 1, createdAt: -1 });
 
-//Create Models
-export const User = mongoose.model('User', userSchema);
-export const Department = mongoose.model('Department', departmentSchema);
-export const Room = mongoose.model('Room', roomSchema);
-export const Course = mongoose.model('Course', courseSchema);
-export const Schedule = mongoose.model('Schedule', scheduleSchema);
-export const Instructor = mongoose.model('Instructor', instructorSchema);
-export const Student = mongoose.model('Student', studentSchema);
-export const ScheduleRequest = mongoose.model('ScheduleRequest', scheduleRequestSchema);
-export const Enrollment = mongoose.model('Enrollment', enrollmentSchema);
-export const Notification = mongoose.model('Notification', notificationSchema);
 // Subject Schema - Possible Subjects list imported by Admin
 const subjectSchema = new mongoose.Schema({
   subjectCode: {
@@ -738,6 +761,18 @@ const subjectSchema = new mongoose.Schema({
 // Prevent duplicates for same subject & term/year
 subjectSchema.index({ subjectCode: 1, semester: 1, schoolYear: 1 }, { unique: true });
 export const Subject = mongoose.model('Subject', subjectSchema);
+
+//Create Models
+export const User = mongoose.model('User', userSchema);
+export const Department = mongoose.model('Department', departmentSchema);
+export const Room = mongoose.model('Room', roomSchema);
+export const Course = mongoose.model('Course', courseSchema);
+export const Schedule = mongoose.model('Schedule', scheduleSchema);
+export const Instructor = mongoose.model('Instructor', instructorSchema);
+export const Student = mongoose.model('Student', studentSchema);
+export const ScheduleRequest = mongoose.model('ScheduleRequest', scheduleRequestSchema);
+export const Enrollment = mongoose.model('Enrollment', enrollmentSchema);
+export const Notification = mongoose.model('Notification', notificationSchema);
 
 export async function seedDatabase() {
   try {
@@ -937,15 +972,20 @@ export async function seedDatabase() {
                 yearLevel,
                 section,
                 semester,
-                studentsEnrolled: 0
+                schoolYear: `${new Date().getFullYear()}`,
+                studentsEnrolled: 0,
+                prerequisite: null,
+                equivalentSubjectCode: null
               });
             }
           }
         }
       }
 
-      await Course.insertMany(courses);
-      console.log(`✅ BSIT Courses seeded: ${courses.length} courses across 4 years, 3 terms, and 2 sections each`);
+      if (courses.length > 0) {
+        await Course.insertMany(courses);
+        console.log(`✅ BSIT Courses seeded: ${courses.length} courses across 4 years, 3 terms, and 2 sections each`);
+      }
     }
 
     // Create instructor profiles
@@ -987,54 +1027,6 @@ export async function seedDatabase() {
       }
     }
 
-    // Insert sample schedules
-    const schedulesCount = await Schedule.countDocuments();
-    if (schedulesCount === 0) {
-      const courses = await Course.find();
-      const instructors = await Instructor.find();
-      const rooms = await Room.find({ isAvailable: true });
-
-      if (courses.length > 0 && instructors.length > 0 && rooms.length > 0) {
-        const schedules = [
-          {
-            courseId: courses[0]._id,
-            instructorId: instructors[0]._id,
-            roomId: rooms[2]._id, // Room 103 (computer lab)
-            dayOfWeek: 'Monday',
-            startTime: '07:00',
-            endTime: '10:00',
-            semester: 'First Term',
-            year: 2024,
-            academicYear: '2024-2025'
-          },
-          {
-            courseId: courses[1]._id,
-            instructorId: instructors[0]._id,
-            roomId: rooms[0]._id, // Room 101
-            dayOfWeek: 'Tuesday',
-            startTime: '10:00',
-            endTime: '11:30',
-            semester: 'First Term',
-            year: 2024,
-            academicYear: '2024-2025'
-          },
-          {
-            courseId: courses[2]._id,
-            instructorId: instructors[0]._id,
-            roomId: rooms[1]._id, // Room 102
-            dayOfWeek: 'Wednesday',
-            startTime: '13:00',
-            endTime: '14:30',
-            semester: 'First Term',
-            year: 2024,
-            academicYear: '2024-2025'
-          }
-        ];
-        await Schedule.insertMany(schedules);
-        console.log('Schedules seeded');
-      }
-    }
-
     console.log('Database seeded successfully');
   } catch (error) {
     console.error('Error seeding database:', error);
@@ -1071,5 +1063,6 @@ export default {
   Schedule,
   ScheduleRequest,
   Enrollment,
-  Notification
+  Notification,
+  Subject
 };

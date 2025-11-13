@@ -1,92 +1,118 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
-import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
-import { AlertCircle, CheckCircle, Wrench, RefreshCw } from 'lucide-react';
+import { Input } from '../ui/input';
+import { Search } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiService } from '../services/api';
 
-interface DiagnosisData {
-  totalCourses: number;
-  coursesWithYearLevel: number;
-  coursesWithSemester: number;
-  coursesWithDepartment: number;
-  coursesWithAll: number;
-  needsFix: boolean;
-  issues: string[];
-  sampleCourses: any[];
-  departments: string[];
-}
+type Course = {
+  _id: string;
+  code?: string;
+  name?: string;
+  description?: string;
+  credits?: number;
+  yearLevel?: string;
+  semester?: string;
+  department?: string;
+  requiredCapacity?: number;
+  schoolYear?: string;
+  prerequisite?: string;
+  equivalentSubjectCode?: string;
+  specialRequirements?: string[];
+  type?: string;
+  section?: string;
+};
+
+const TERMS = ['First Term', 'Second Term', 'Third Term'] as const;
+const YEARS = ['1', '2', '3', '4'] as const;
 
 export function CurriculumFix() {
-  const [diagnosis, setDiagnosis] = useState<DiagnosisData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [fixing, setFixing] = useState(false);
-  const [defaultDepartment, setDefaultDepartment] = useState('IT');
-  const [defaultSemester, setDefaultSemester] = useState('First Term');
+  const [loading, setLoading] = useState<boolean>(true);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState<string>('');
 
   useEffect(() => {
-    runDiagnosis();
+    fetchCourses();
   }, []);
 
-  const runDiagnosis = async () => {
+  const fetchCourses = async () => {
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      const response = await fetch('http://localhost:3001/api/admin/courses/diagnose', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-
-      if (!response.ok) throw new Error('Failed to diagnose');
-
-      const result = await response.json();
-      if (result.success) {
-        setDiagnosis(result.data);
-      }
-    } catch (error) {
-      console.error('Diagnosis error:', error);
-      toast.error('Failed to diagnose courses');
+      const response = await apiService.getCourses();
+      const allCourses = response.courses || response.data || [];
+      setCourses(allCourses);
+    } catch (err: any) {
+      console.error('Fetch courses error:', err);
+      setError(err?.message || 'Failed to load courses');
+      toast.error('Failed to load curriculum');
     } finally {
       setLoading(false);
     }
   };
 
-  const runFix = async () => {
-    try {
-      setFixing(true);
-      const response = await fetch('http://localhost:3001/api/admin/courses/fix', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          defaultDepartment,
-          defaultSemester
-        })
-      });
+  // Filter courses based on search term
+  const filteredCourses = React.useMemo(() => {
+    if (!searchTerm) return courses;
+    const term = searchTerm.toLowerCase();
+    return courses.filter(c => 
+      c.code?.toLowerCase().includes(term) ||
+      c.name?.toLowerCase().includes(term) ||
+      c.description?.toLowerCase().includes(term) ||
+      c.prerequisite?.toLowerCase().includes(term) ||
+      c.equivalentSubjectCode?.toLowerCase().includes(term) ||
+      c.section?.toLowerCase().includes(term) ||
+      c.type?.toLowerCase().includes(term)
+    );
+  }, [courses, searchTerm]);
 
-      if (!response.ok) throw new Error('Failed to fix');
-
-      const result = await response.json();
-      if (result.success) {
-        toast.success(result.message);
-        // Re-run diagnosis to see updated results
-        await runDiagnosis();
-      }
-    } catch (error) {
-      console.error('Fix error:', error);
-      toast.error('Failed to fix courses');
-    } finally {
-      setFixing(false);
+  // Build grouped structure: yearLevel -> term -> Course[]
+  const grouped = React.useMemo(() => {
+    const g: Record<string, Record<string, Course[]>> = {};
+    for (const y of YEARS) {
+      g[y] = {};
+      for (const t of TERMS) g[y][t] = [];
     }
-  };
 
-  if (loading && !diagnosis) {
+    for (const c of filteredCourses) {
+      const y = (c.yearLevel && YEARS.includes(c.yearLevel as any)) ? c.yearLevel : '1';
+      const s = TERMS.includes((c.semester as any)) ? c.semester as string : 'First Term';
+      g[y] = g[y] || {};
+      g[y][s] = g[y][s] || [];
+      g[y][s].push(c);
+    }
+
+    // sort each term list by code
+    for (const y of Object.keys(g)) {
+      for (const t of Object.keys(g[y])) {
+        g[y][t].sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+      }
+    }
+    return g;
+  }, [filteredCourses]);
+
+  if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <LoadingSpinner size="lg" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Curriculum</CardTitle>
+            <CardDescription>Error loading curriculum</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="text-sm text-red-600">{error}</div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -95,211 +121,85 @@ export function CurriculumFix() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">Curriculum Data Fix</h2>
-          <p className="text-muted-foreground">Diagnose and fix missing course fields for curriculum display</p>
+          <h2 className="text-2xl font-bold text-gray-900">Curriculum</h2>
+          <p className="text-sm text-gray-600">All courses grouped by year level and semester</p>
         </div>
-        <Button onClick={runDiagnosis} disabled={loading} variant="outline">
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          Re-diagnose
-        </Button>
       </div>
 
-      {diagnosis && (
-        <>
-          {/* Status Card */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                {diagnosis.needsFix ? (
-                  <>
-                    <AlertCircle className="h-5 w-5 text-orange-500" />
-                    <span>Issues Found</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="h-5 w-5 text-green-500" />
-                    <span>All Good!</span>
-                  </>
-                )}
-              </CardTitle>
-              <CardDescription>
-                {diagnosis.needsFix 
-                  ? 'Some courses are missing required fields for curriculum display'
-                  : 'All courses have the required fields'
-                }
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">Total Courses</p>
-                  <p className="text-2xl font-bold">{diagnosis.totalCourses}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">With Year Level</p>
-                  <p className="text-2xl font-bold">{diagnosis.coursesWithYearLevel}</p>
-                  {diagnosis.coursesWithYearLevel < diagnosis.totalCourses && (
-                    <Badge variant="destructive" className="text-xs">
-                      {diagnosis.totalCourses - diagnosis.coursesWithYearLevel} missing
-                    </Badge>
-                  )}
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">With Semester</p>
-                  <p className="text-2xl font-bold">{diagnosis.coursesWithSemester}</p>
-                  {diagnosis.coursesWithSemester < diagnosis.totalCourses && (
-                    <Badge variant="destructive" className="text-xs">
-                      {diagnosis.totalCourses - diagnosis.coursesWithSemester} missing
-                    </Badge>
-                  )}
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">With Department</p>
-                  <p className="text-2xl font-bold">{diagnosis.coursesWithDepartment}</p>
-                  {diagnosis.coursesWithDepartment < diagnosis.totalCourses && (
-                    <Badge variant="destructive" className="text-xs">
-                      {diagnosis.totalCourses - diagnosis.coursesWithDepartment} missing
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+      {/* Search Bar */}
+      <div className="relative w-full max-w-md">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+        <Input
+          type="text"
+          placeholder="Search courses by code, name, description, section..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="pl-10 bg-white text-gray-900"
+        />
+      </div>
 
-          {/* Issues List */}
-          {diagnosis.issues.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Issues Detected</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2">
-                  {diagnosis.issues.map((issue, idx) => (
-                    <li key={idx} className="flex items-center gap-2">
-                      <AlertCircle className="h-4 w-4 text-orange-500" />
-                      <span>{issue}</span>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          )}
+      {/* Render each Year */}
+      {YEARS.map(year => (
+        <div key={year} className="space-y-3">
+          <h3 className="text-xl font-semibold">Year {year} - Courses</h3>
 
-          {/* Sample Courses */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Sample Courses</CardTitle>
-              <CardDescription>First 5 courses in the database</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {diagnosis.sampleCourses.map((course, idx) => (
-                  <div key={idx} className="border rounded-lg p-3">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="font-semibold">{course.code} - {course.name}</p>
-                        <div className="flex gap-2 mt-2">
-                          <Badge variant={course.department ? "default" : "destructive"}>
-                            Dept: {course.department || 'MISSING'}
-                          </Badge>
-                          <Badge variant={course.yearLevel ? "default" : "destructive"}>
-                            Year: {course.yearLevel || 'MISSING'}
-                          </Badge>
-                          <Badge variant={course.semester ? "default" : "destructive"}>
-                            Semester: {course.semester || 'MISSING'}
-                          </Badge>
-                        </div>
+          {/* For each term in the year render a table */}
+          <div className="grid gap-6">
+            {TERMS.map(term => {
+              const list = grouped[year]?.[term] || [];
+              return (
+                <Card key={term}>
+                  <CardHeader>
+                    <CardTitle className="flex items-center justify-between">
+                      <span className="text-base font-medium">{term}</span>
+                      <span className="text-sm text-gray-600">{list.length} course(s)</span>
+                    </CardTitle>
+                    <CardDescription>Courses for Year {year} — {term}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {list.length === 0 ? (
+                      <div className="p-4 text-sm text-gray-500">No courses</div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full border-collapse text-sm">
+                          <thead>
+                            <tr className="bg-red-700 text-white">
+                              <th className="p-2 border text-left">Subject Code</th>
+                              <th className="p-2 border text-left">Prerequisite</th>
+                              <th className="p-2 border text-left">Equiv. Subject Code</th>
+                              <th className="p-2 border text-left">Description</th>
+                              <th className="p-2 border text-center">Units</th>
+                              <th className="p-2 border text-left">Type</th>
+                              <th className="p-2 border text-left">Section</th>
+                              <th className="p-2 border text-left">School Year</th>
+                              <th className="p-2 border text-left">Semester</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {list.map((c, idx) => (
+                              <tr key={c._id} className={idx % 2 === 0 ? 'bg-red-50' : 'bg-white'}>
+                                <td className="p-2 border text-xs font-medium text-blue-700">{c.code || '-'}</td>
+                                <td className="p-2 border text-xs">{c.prerequisite || '-'}</td>
+                                <td className="p-2 border text-xs">{c.equivalentSubjectCode || '-'}</td>
+                                <td className="p-2 border text-xs">{c.name || c.description || '-'}</td>
+                                <td className="p-2 border text-center text-xs font-semibold">{c.credits ?? '-'}</td>
+                                <td className="p-2 border text-xs">{c.type || '-'}</td>
+                                <td className="p-2 border text-xs">{c.section || '-'}</td>
+                                <td className="p-2 border text-xs">{c.schoolYear || (c.yearLevel ? `${new Date().getFullYear()}` : '-')}</td>
+                                <td className="p-2 border text-xs">{c.semester || '-'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Fix Section */}
-          {diagnosis.needsFix && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Wrench className="h-5 w-5" />
-                  Fix Missing Fields
-                </CardTitle>
-                <CardDescription>
-                  Set default values for missing fields. The system will attempt to extract year level from course codes.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Default Department</label>
-                    <select
-                      className="w-full border rounded-md p-2"
-                      value={defaultDepartment}
-                      onChange={(e) => setDefaultDepartment(e.target.value)}
-                    >
-                      <option value="IT">IT</option>
-                      <option value="CS">CS</option>
-                      <option value="Engineering">Engineering</option>
-                      <option value="Business">Business</option>
-                      <option value="Science">Science</option>
-                      {diagnosis.departments.filter(d => d && !['IT', 'CS', 'Engineering', 'Business', 'Science'].includes(d)).map(dept => (
-                        <option key={dept} value={dept}>{dept}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Default Semester</label>
-                    <select
-                      className="w-full border rounded-md p-2"
-                      value={defaultSemester}
-                      onChange={(e) => setDefaultSemester(e.target.value)}
-                    >
-                      <option value="First Term">First Term</option>
-                      <option value="Second Term">Second Term</option>
-                      <option value="Third Term">Third Term</option>
-                    </select>
-                  </div>
-                </div>
-
-                <Button onClick={runFix} disabled={fixing} className="w-full">
-                  {fixing ? (
-                    <>
-                      <LoadingSpinner size="sm" className="mr-2" />
-                      Fixing...
-                    </>
-                  ) : (
-                    <>
-                      <Wrench className="h-4 w-4 mr-2" />
-                      Fix Courses Now
-                    </>
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Departments Info */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Departments in Database</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {diagnosis.departments.length > 0 ? (
-                  diagnosis.departments.map(dept => (
-                    <Badge key={dept} variant="outline">
-                      {dept || '(no department)'}
-                    </Badge>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">No departments found</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </>
-      )}
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
