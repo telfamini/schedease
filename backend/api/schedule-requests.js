@@ -341,13 +341,54 @@ export async function approveBorrowRequestByInstructor(req, res) {
 
     // Update request status based on approval
     if (approved) {
-      // Move to pending/admin review after instructor approval
-      request.status = 'pending';
+      // Set status to approved when instructor approves
+      request.status = 'approved';
+      
+      // Create a temporary schedule for the borrowed time
+      try {
+        if (request.scheduleId && request.date) {
+          const originalSchedule = await Schedule.findById(request.scheduleId);
+          if (originalSchedule) {
+            // Ensure we have year and academicYear
+            const scheduleYear = originalSchedule.year || new Date().getFullYear();
+            const scheduleAcademicYear = originalSchedule.academicYear || `${scheduleYear}-${scheduleYear + 1}`;
+            
+            // Create temporary schedule with the borrowed date
+            const tempSchedule = await Schedule.create({
+              courseId: originalSchedule.courseId,
+              courseCode: originalSchedule.courseCode,
+              courseName: originalSchedule.courseName,
+              instructorId: request.instructorId, // Borrowing instructor
+              instructorName: request.instructorName,
+              roomId: originalSchedule.roomId,
+              roomName: originalSchedule.roomName,
+              building: originalSchedule.building,
+              dayOfWeek: originalSchedule.dayOfWeek,
+              startTime: originalSchedule.startTime,
+              endTime: originalSchedule.endTime,
+              duration: originalSchedule.duration,
+              semester: originalSchedule.semester,
+              year: scheduleYear,
+              academicYear: scheduleAcademicYear,
+              yearLevel: originalSchedule.yearLevel,
+              section: originalSchedule.section,
+              scheduleDate: request.date, // Specific date for borrowed schedule
+              status: 'published',
+              isTemporary: true, // Mark as temporary
+              borrowRequestId: request._id // Link to borrow request
+            });
+            console.log('Created temporary borrowed schedule:', tempSchedule._id);
+          }
+        }
+      } catch (scheduleError) {
+        console.error('Error creating temporary schedule:', scheduleError);
+      }
+      
       // Notify admin
       try {
         await addNotification({
           role: 'admin',
-          title: 'Borrow Request Approved by Instructor',
+          title: 'Borrow Request Published',
           message: `${request.originalInstructorName || 'An instructor'} approved a borrow request from ${request.instructorName || 'an instructor'}`,
           type: 'request'
         });

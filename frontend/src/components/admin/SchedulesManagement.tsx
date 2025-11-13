@@ -111,6 +111,9 @@ interface Schedule {
   status: 'draft' | 'published' | 'conflict' | 'canceled';
   conflicts: string[];
   createdAt: string;
+  scheduleDate?: string;
+  isTemporary?: boolean;
+  borrowRequestId?: string;
 }
 
 interface ScheduleFormData {
@@ -1179,16 +1182,25 @@ export function SchedulesManagement() {
                   <TableHead className="font-semibold">Instructor</TableHead>
                   <TableHead className="font-semibold">Room</TableHead>
                   <TableHead className="font-semibold">Schedule</TableHead>
+                  <TableHead className="font-semibold">Date</TableHead>
                   <TableHead className="font-semibold">Status</TableHead>
                   <TableHead className="text-right font-semibold">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredSchedules.map((schedule) => (
-                  <TableRow key={schedule._id} className="hover:bg-gray-50">
+                  <TableRow 
+                    key={schedule._id} 
+                    className={`hover:bg-gray-50 ${schedule.isTemporary ? 'bg-yellow-50 border-l-4 border-yellow-400' : ''}`}
+                  >
                     <TableCell>
                       <div>
-                        <div className="font-semibold text-gray-900">{schedule.courseCode}</div>
+                        <div className="font-semibold text-gray-900 flex items-center gap-2">
+                          {schedule.courseCode}
+                          {schedule.isTemporary && (
+                            <Badge className="bg-yellow-400 text-gray-900 text-xs">TEMP</Badge>
+                          )}
+                        </div>
                         <div className="text-sm text-gray-500">{schedule.courseName}</div>
                       </div>
                     </TableCell>
@@ -1208,6 +1220,16 @@ export function SchedulesManagement() {
                           {schedule.startTime} - {schedule.endTime}
                         </div>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {schedule.scheduleDate ? (
+                        <div className={`text-sm ${schedule.isTemporary ? 'font-semibold text-yellow-700' : 'text-gray-700'}`}>
+                          <Calendar className="h-3 w-3 inline mr-1" />
+                          {new Date(schedule.scheduleDate).toLocaleDateString()}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-gray-400">Recurring</div>
+                      )}
                     </TableCell>
                     <TableCell>
                       {schedule.status === 'published' && (

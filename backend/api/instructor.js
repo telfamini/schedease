@@ -1,12 +1,11 @@
 import express from 'express';
 import { Instructor, Schedule, User, Course, Enrollment } from '../config/database.js';
-import { requireAuth, requireInstructor } from './auth.js';
+import { requireAuth } from '../utils/auth.js';
 
 const router = express.Router();
 
 // Apply auth middleware to all routes
 router.use(requireAuth);
-router.use(requireInstructor);
 
 // Get instructor profile
 router.get('/profile', async (req, res) => {

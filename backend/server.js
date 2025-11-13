@@ -23,6 +23,7 @@ import { getEnrollments, getStudentEnrollments, getMyEnrollments, getInstructorE
 // Router-style routes
 import notificationsRouter from './api/notifications.js';
 import schedulesRouter from './api/schedules.js';
+import instructorRouter from './api/instructor.js';
 import { getSubjects } from './api/subjects.js';
 
 // Load environment variables
@@ -95,6 +96,9 @@ app.delete('/api/rooms/:id', requireAuth, requireAdmin, deleteRoom);
 
 // Schedule routes
 app.use('/api/schedules', schedulesRouter);
+
+// Instructor dashboard routes (profile, availability, etc.)
+app.use('/api/instructor', instructorRouter);
 
 // Subjects routes (filterable list)
 app.get('/api/subjects', requireAuth, getSubjects);

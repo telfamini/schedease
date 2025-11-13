@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
-import { Clock, MapPin, User, GripVertical, Save, Sparkles } from 'lucide-react';
+import { Clock, MapPin, User, GripVertical, Save, Sparkles, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import apiService from '../services/api';
 import { toast } from 'sonner';
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, useDraggable, useDroppable } from '@dnd-kit/core';
@@ -55,6 +55,9 @@ interface ScheduleBlock {
   section?: string;
   year?: number;
   semester?: string;
+  scheduleDate?: string;
+  isTemporary?: boolean;
+  borrowRequestId?: string;
 }
 
 interface TimeSlot {
@@ -98,7 +101,7 @@ function UnscheduledCoursesArea({ courses, onDrop }: {
       }`}
     >
       {courses.length === 0 ? (
-        <p className="text-sm text-gray-600 dark:text-gray-400 text-center py-8">
+        <p className="text-base font-bold text-gray-800 dark:text-gray-200 text-center py-8">
           All courses are scheduled!
         </p>
       ) : (
@@ -131,18 +134,18 @@ function DraggableCourse({ course }: { course: Course }) {
       style={style}
       {...listeners}
       {...attributes}
-      className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg p-3 mb-2 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow"
+      className="bg-white dark:bg-gray-800 border-2 border-gray-400 dark:border-gray-600 rounded-lg p-3 mb-2 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow"
     >
       <div className="flex items-start gap-2">
-        <GripVertical className="h-4 w-4 text-gray-400 dark:text-gray-500 mt-1 flex-shrink-0" />
+        <GripVertical className="h-4 w-4 text-gray-700 dark:text-gray-300 mt-1 flex-shrink-0" />
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm truncate text-gray-900 dark:text-gray-200">{course.code}</p>
-          <p className="text-xs text-gray-600 dark:text-gray-400 truncate">{course.name}</p>
+          <p className="font-bold text-base truncate text-gray-900 dark:text-gray-100">{course.code}</p>
+          <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 truncate">{course.name}</p>
           <div className="flex items-center gap-2 mt-1">
-            <Badge variant="outline" className="text-xs text-gray-700 dark:border-gray-600 dark:text-gray-300">
+            <Badge variant="outline" className="text-xs font-bold text-gray-800 border-2 border-gray-400 dark:border-gray-500 dark:text-gray-200">
               {durationHours}h
             </Badge>
-            <Badge variant="secondary" className="text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+            <Badge variant="secondary" className="text-xs font-bold text-gray-800 bg-gray-200 dark:bg-gray-600 dark:text-gray-100">
               {course.type}
             </Badge>
           </div>
@@ -240,16 +243,30 @@ function ScheduleBlockComponent({ schedule, onInstructorDrop, onRoomDrop }: {
 
   return (
     <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
-      className="absolute inset-x-1 rounded p-2 text-white text-xs overflow-hidden hover:opacity-90 hover:shadow-lg transition-shadow"
+      className={`absolute inset-x-1 rounded p-2 text-white text-xs overflow-hidden hover:opacity-90 hover:shadow-lg transition-shadow cursor-move ${
+        schedule.isTemporary ? 'border-2 border-yellow-400 border-dashed' : ''
+      }`}
       style={style}
     >
       <div className="flex items-center gap-1 mb-1">
-        <GripVertical className="h-3 w-3" />
+        <GripVertical className="h-3 w-3 cursor-grab active:cursor-grabbing" />
         <p className="font-bold truncate flex-1">{schedule.courseCode}</p>
+        {schedule.isTemporary && (
+          <span className="text-xs bg-yellow-400 text-gray-900 px-1 rounded">TEMP</span>
+        )}
       </div>
       <p className="truncate">{schedule.courseName}</p>
+      {schedule.scheduleDate && schedule.isTemporary && (
+        <div className="flex items-center gap-1 mt-1 bg-yellow-400/20 px-1 rounded">
+          <Calendar className="h-3 w-3" />
+          <span className="font-semibold">{new Date(schedule.scheduleDate).toLocaleDateString()}</span>
+        </div>
+      )}
       <div className="flex items-center gap-1 mt-1">
         <Clock className="h-3 w-3" />
         <span>{schedule.startTime} - {schedule.endTime}</span>
@@ -287,6 +304,11 @@ export function ScheduleBuilder() {
   const [availableTerms, setAvailableTerms] = useState<{semesters: string[], yearLevels: string[]}>({semesters: [], yearLevels: []});
   const [autoGenConfig, setAutoGenConfig] = useState({semester: '', year: new Date().getFullYear(), academicYear: '', saveToDatabase: true});
   const [generating, setGenerating] = useState(false);
+  
+  // Week and date management (14 weeks per semester)
+  const [currentWeek, setCurrentWeek] = useState<number>(1);
+  const [semesterStartDate, setSemesterStartDate] = useState<Date>(new Date());
+  const WEEKS_PER_SEMESTER = 14;
 
   useEffect(() => {
     loadData();
@@ -305,6 +327,30 @@ export function ScheduleBuilder() {
       '#10b981', '#06b6d4', '#6366f1', '#f97316'
     ];
     return colors[Math.floor(Math.random() * colors.length)];
+  };
+
+  // Calculate the start date of a specific week
+  const getWeekStartDate = (weekNumber: number): Date => {
+    const startDate = new Date(semesterStartDate);
+    startDate.setDate(startDate.getDate() + (weekNumber - 1) * 7);
+    return startDate;
+  };
+
+  // Get date for a specific day of the week
+  const getDateForDay = (weekNumber: number, dayName: string): Date => {
+    const weekStart = getWeekStartDate(weekNumber);
+    const dayIndex = DAYS.indexOf(dayName);
+    const date = new Date(weekStart);
+    date.setDate(date.getDate() + dayIndex);
+    return date;
+  };
+
+  // Format date range for current week
+  const getCurrentWeekDateRange = (): string => {
+    const weekStart = getWeekStartDate(currentWeek);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 5); // Friday
+    return `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
   };
 
   const loadData = async () => {
@@ -977,7 +1023,7 @@ export function ScheduleBuilder() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Schedule Builder</h2>
-            <p className="text-gray-600 dark:text-gray-400">Drag and drop courses to create schedules</p>
+            <p className="text-base font-semibold text-gray-700 dark:text-black-300">Drag and drop courses to create schedules</p>
           </div>
           <div className="flex gap-2">
             <Button 
@@ -1007,36 +1053,36 @@ export function ScheduleBuilder() {
 
         {/* Section Navigation Tabs */}
         <div className="mb-4">
+          {/* Academic Year & Semester Selection */}
           <div className="flex items-center gap-4 mb-4">
-            <div className="flex-1">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2 block">Academic Year & Semester</label>
-              <div className="flex gap-2">
-                <select 
-                  className="text-sm border rounded p-2 bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
-                  value={scheduleYear} 
-                  onChange={(e) => setScheduleYear(parseInt(e.target.value))}
-                >
-                  <option value="2021">2021-2022</option>
-                  <option value="2022">2022-2023</option>
-                  <option value="2023">2023-2024</option>
-                  <option value="2024">2024-2025</option>
-                  <option value="2025">2025-2026</option>
-                  <option value="2026">2026-2027</option>
-                </select>
-                <select 
-                  className="text-sm border rounded p-2 bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
-                  value={scheduleSemester} 
-                  onChange={(e) => setScheduleSemester(e.target.value)}
-                >
-                  <option value="First Term">First Term</option>
-                  <option value="Second Term">Second Term</option>
-                  <option value="Third Term">Third Term</option>
-                </select>
-              </div>
+            <div className="flex items-center gap-3">
+              <label className="text-base font-bold text-gray-800 dark:text-black-200">
+                Academic Year & Semester:
+              </label>
+              <select 
+                className="text-base font-bold border-2 border-black-300 dark:border-gray-600 rounded-lg px-4 py-2.5 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 transition-all"
+                value={scheduleYear} 
+                onChange={(e) => setScheduleYear(parseInt(e.target.value))}
+              >
+                <option value="2022">2022-2023</option>
+                <option value="2023">2023-2024</option>
+                <option value="2024">2024-2025</option>
+                <option value="2025">2025-2026</option>
+                <option value="2026">2026-2027</option>
+              </select>
+              <select 
+                className="text-base font-bold border-2 border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2.5 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 transition-all"
+                value={scheduleSemester} 
+                onChange={(e) => setScheduleSemester(e.target.value)}
+              >
+                <option value="First Term">First Term</option>
+                <option value="Second Term">Second Term</option>
+                <option value="Third Term">Third Term</option>
+              </select>
             </div>
           </div>
           
-          <div className="border-b border-gray-200 dark:border-gray-700">
+          <div className="border-b border-gray-200 dark:border-black-700">
             <nav className="-mb-px flex space-x-4" aria-label="Sections">
               {['1A', '1B', '2A', '2B', '3A', '3B', '4A', '4B'].map((section) => {
                 const [year, sec] = [section[0], section[1]];
@@ -1049,11 +1095,11 @@ export function ScheduleBuilder() {
                       setSelectedSection(sec);
                     }}
                     className={`
-                      px-4 py-2 text-sm font-medium border-b-2 transition-colors
+                      px-4 py-2 text-base font-bold border-b-2 transition-colors
                       ${
                         isActive
                           ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                          : 'border-transparent text-gray-700 hover:text-gray-900 hover:border-gray-300 dark:text-gray-300 dark:hover:text-gray-100'
                       }
                     `}
                   >
@@ -1070,26 +1116,26 @@ export function ScheduleBuilder() {
           <div className="col-span-3">
             <Card className="shadow-sm">
               <CardHeader className="sticky top-0 z-10 bg-white/90 dark:bg-gray-900/90 backdrop-blur border-b">
-                 <CardTitle className="text-lg text-gray-900 dark:text-white">Unscheduled Courses</CardTitle>
-                 <p className="text-sm text-gray-600 dark:text-gray-400">{unscheduledCourses.length} courses</p>
+                 <CardTitle className="text-lg font-bold text-gray-800 dark:text-gray-200">Unscheduled Courses</CardTitle>
+                 <p className="text-base font-semibold text-gray-700 dark:text-gray-300">{unscheduledCourses.length} courses</p>
                </CardHeader>
                <CardContent>
                  {/* Resources Section */}
                  <div className="mb-4 space-y-2">
-                  <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-200 dark:border-blue-700">
-                    <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
+                  <div className="bg-blue-600 dark:bg-blue-700 p-3 rounded-lg border-2 border-blue-700 dark:border-blue-600 shadow-md">
+                    <p className="text-base font-bold text-white mb-1">
                       📚 Currently Viewing: Year {selectedYearLevel} - Section {selectedSection}
                     </p>
-                    <p className="text-xs text-blue-700 dark:text-blue-300">
+                    <p className="text-sm font-semibold text-white/90">
                       {scheduleSemester} {scheduleYear}-{scheduleYear + 1}
                     </p>
                   </div>
                   <hr className="my-2" />
-                   <label className="text-xs font-medium text-gray-700 dark:text-gray-200">Available Instructors ({instructors.length})</label>
-                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Drag instructors onto schedule blocks to assign</p>
+                   <label className="text-base font-bold text-gray-800 dark:text-black-200">Available Instructors ({instructors.length})</label>
+                   <p className="text-sm font-semibold text-gray-700 dark:text-black-300 mb-2">Drag instructors onto schedule blocks to assign</p>
                    <div className="space-y-2 max-h-[300px] overflow-y-auto">
                      {instructors.length === 0 ? (
-                       <p className="text-sm text-gray-500 p-2">No instructors available</p>
+                       <p className="text-sm text-black-500 p-2">No instructors available</p>
                      ) : (
                        instructors.map(instructor => (
                        <div
@@ -1103,11 +1149,11 @@ export function ScheduleBuilder() {
                        >
                          <div className="flex items-center gap-2">
                            <User className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                           <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                           <span className="text-sm font-bold text-gray-900 dark:text-gray-100">
                              {instructor.userId?.name || 'Unknown'}
                            </span>
                          </div>
-                         <p className="text-xs text-gray-600 dark:text-gray-400 ml-6">
+                         <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 ml-6">
                            {instructor.userId?.department || 'No department'}
                          </p>
                        </div>
@@ -1116,8 +1162,8 @@ export function ScheduleBuilder() {
                    </div>
 
                    <hr className="my-2" />
-                   <label className="text-xs font-medium text-gray-700 dark:text-gray-200">Available Rooms</label>
-                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Drag rooms onto schedule blocks to assign</p>
+                   <label className="text-base font-bold text-gray-800 dark:text-black-200">Available Rooms</label>
+                   <p className="text-sm font-semibold text-gray-700 dark:text-black-300 mb-2">Drag rooms onto schedule blocks to assign</p>
                    <div className="space-y-2 max-h-[300px] overflow-y-auto">
                      {rooms.map(room => (
                        <div
@@ -1131,11 +1177,11 @@ export function ScheduleBuilder() {
                        >
                          <div className="flex items-center gap-2">
                            <MapPin className="h-4 w-4 text-green-600 dark:text-green-400" />
-                           <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                           <span className="text-sm font-bold text-gray-900 dark:text-black-100">
                              {room.name}
                            </span>
                          </div>
-                         <p className="text-xs text-gray-600 dark:text-gray-400 ml-6">
+                         <p className="text-xs font-semibold text-gray-700 dark:text-black-300 ml-6">
                            {room.building} {room.capacity ? `• ${room.capacity} seats` : ''}
                          </p>
                        </div>
@@ -1145,9 +1191,9 @@ export function ScheduleBuilder() {
 
                 {/* Show only courses for selected cohort to avoid duplicates across sections */}
                 {!selectedYearLevel || !selectedSection ? (
-                  <div className="p-3 text-sm text-gray-500 text-center">
+                  <div className="p-3 text-base font-bold text-black-700 text-center">
                     <p className="mb-2">👆 Click a section tab above to view courses</p>
-                    <p className="text-xs">Example: Year 1 - Section A</p>
+                    <p className="text-sm font-semibold">Example: Year 1 - Section A</p>
                   </div>
                 ) : (
                   <UnscheduledCoursesArea 
@@ -1168,11 +1214,13 @@ export function ScheduleBuilder() {
                 <div className="overflow-auto max-h-[calc(100vh-200px)]">
                   <div className="min-w-[800px]">
                     {/* Header Row */}
-                    <div className="grid grid-cols-7 border-b border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 sticky top-0 z-20">
-                      <div className="p-2 border-r border-gray-300 dark:border-gray-700 font-semibold text-sm text-gray-700 dark:text-gray-200">Time</div>
+                    <div className="grid grid-cols-7 border-b-2 border-gray-300 dark:border-gray-600 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 sticky top-0 z-20 shadow-sm">
+                      <div className="p-3 border-r border-gray-300 dark:border-gray-700 font-bold text-sm text-gray-800 dark:text-gray-100 flex items-center justify-center">
+                        Time
+                      </div>
                       {DAYS.map(day => (
-                        <div key={day} className="p-2 border-r border-gray-300 dark:border-gray-700 font-semibold text-sm text-center text-gray-700 dark:text-gray-200">
-                          {day}
+                        <div key={day} className="p-3 border-r border-gray-300 dark:border-gray-700 text-center bg-white dark:bg-gray-800">
+                          <div className="font-bold text-base text-gray-900 dark:text-black-100">{day}</div>
                         </div>
                       ))}
                     </div>

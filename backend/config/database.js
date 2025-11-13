@@ -567,6 +567,10 @@ const scheduleSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  isTemporary: {
+    type: Boolean,
+    default: false
+  },
   borrowRequestId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'ScheduleRequest'
