@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 
 // MongoDB connection configuration
 const dbConfig = {
-  mongoUri: process.env.MONGODB_URI || 'mongodb+srv://telfamini_db_user:6dt5Svh4V7ufRC4d@schedease.zqyud1j.mongodb.net/',
+  mongoUri: process.env.MONGODB_URI || 'mongodb+srv://kuronini7:hehehe@cluster0.ieladnw.mongodb.net/schedease_db?retryWrites=true&w=majority',
   options: {
     serverSelectionTimeoutMS: 5000,
     socketTimeoutMS: 45000,
@@ -772,8 +772,9 @@ export async function seedDatabase() {
     }
 
     // Create default student user
-    const existingStudent = await User.findOne({ email: 'student@university.edu' });
-    if (!existingStudent) {
+    const existingStudentUser = await User.findOne({ email: 'student@university.edu' });
+    let studentUserId;
+    if (!existingStudentUser) {
       const studentUser = new User({
         name: 'Student User',
         email: 'student@university.edu',
@@ -783,7 +784,25 @@ export async function seedDatabase() {
         section: '1A'
       });
       await studentUser.save();
+      studentUserId = studentUser._id;
       console.log('Student user created');
+    } else {
+      studentUserId = existingStudentUser._id;
+    }
+
+    // Create Student profile if it doesn't exist
+    const existingStudentProfile = await Student.findOne({ userId: studentUserId });
+    if (!existingStudentProfile) {
+      const studentProfile = new Student({
+        userId: studentUserId,
+        studentId: 'ST2024001',
+        department: 'IT',
+        year: '1',
+        section: '1A',
+        enrolledCourses: []
+      });
+      await studentProfile.save();
+      console.log('Student profile created');
     }
 
     // Insert IT department

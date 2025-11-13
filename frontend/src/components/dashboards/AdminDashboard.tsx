@@ -14,6 +14,8 @@ import { Analytics } from '../admin/Analytics';
 import { AdminEnrollmentManagement } from '../admin/AdminEnrollmentManagement';
 import { AdminScheduleRequests } from '../admin/AdminScheduleRequests';
 import { StudentsManagement } from '../admin/StudentsManagement';
+import { ScheduleBuilder } from '../admin/ScheduleBuilder';
+import { CurriculumFix } from '../admin/CurriculumFix';
 import { 
   LayoutDashboard, 
   BookOpen, 
@@ -27,7 +29,9 @@ import {
   Settings,
   BarChart,
   GraduationCap,
-  CalendarDays
+  CalendarDays,
+  CalendarPlus,
+  Wrench
 } from 'lucide-react';
 import { apiService } from '../services/api';
 import { toast } from 'sonner';
@@ -99,6 +103,12 @@ export function AdminDashboard() {
       active: activeTab === 'schedules'
     },
     {
+      icon: CalendarPlus,
+      label: 'Schedule Builder',
+      onClick: () => setActiveTab('schedule-builder'),
+      active: activeTab === 'schedule-builder'
+    },
+    {
       icon: Users,
       label: 'Users',
       onClick: () => setActiveTab('users'),
@@ -110,6 +120,12 @@ export function AdminDashboard() {
       label: 'Students',
       onClick: () => setActiveTab('students'),
       active: activeTab === 'students'
+    },
+    {
+      icon: Wrench,
+      label: 'Curriculum Fix',
+      onClick: () => setActiveTab('curriculum-fix'),
+      active: activeTab === 'curriculum-fix'
     },
     {
       icon: BarChart,
@@ -201,10 +217,12 @@ export function AdminDashboard() {
       case 'courses': return 'Course Management';
       case 'rooms': return 'Room Management';
       case 'schedules': return 'Schedule Management';
+      case 'schedule-builder': return 'Schedule Builder';
       case 'users': return 'User Management';
       case 'analytics': return 'Analytics & Reports';
       case 'settings': return 'System Settings';
       case 'students': return 'Student Management';
+      case 'curriculum-fix': return 'Curriculum Data Fix';
       
       default: return 'Admin Dashboard';
     }
@@ -538,8 +556,10 @@ export function AdminDashboard() {
       {activeTab === 'courses' && <CoursesManagement />}
       {activeTab === 'rooms' && <RoomsManagement />}
       {activeTab === 'schedules' && <SchedulesManagement />}
+      {activeTab === 'schedule-builder' && <ScheduleBuilder />}
       {activeTab === 'users' && <UsersManagement />}
       {activeTab === 'students' && <StudentsManagement />}
+      {activeTab === 'curriculum-fix' && <CurriculumFix />}
       
       {activeTab === 'analytics' && <Analytics />}
       {activeTab === 'settings' && <SystemSettings />}

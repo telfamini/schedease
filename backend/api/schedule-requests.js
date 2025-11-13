@@ -6,7 +6,7 @@ import { addNotification } from '../utils/notifications.js';
 // Get all schedule requests
 export async function getScheduleRequests(req, res) {
   try {
-    const requests = await ScheduleRequest.find()
+    const requests = await ScheduleRequest.find({ deleted: { $ne: true } })
       .populate({
         path: 'instructorId',
         populate: {
@@ -49,7 +49,7 @@ export async function getInstructorScheduleRequests(req, res) {
   try {
     const { instructorId } = req.params;
     
-    const requests = await ScheduleRequest.find({ instructorId })
+    const requests = await ScheduleRequest.find({ instructorId, deleted: { $ne: true } })
       .populate('courseId', 'code name')
       .populate({
         path: 'originalInstructorId',
@@ -406,7 +406,8 @@ export async function getBorrowRequestsForInstructor(req, res) {
     const requests = await ScheduleRequest.find({
       requestType: 'borrow_schedule',
       originalInstructorId: instructorId,
-      originalInstructorApproved: null // Only pending approvals
+      originalInstructorApproved: null, // Only pending approvals
+      deleted: { $ne: true }
     })
       .populate({ path: 'instructorId', populate: { path: 'userId', select: 'name email' } })
       .populate('courseId', 'code name')
@@ -729,15 +730,20 @@ export const rejectScheduleRequest = async (req, res) => {
   }
 };
 
-// Delete a schedule request
+// Soft delete a schedule request
 export async function deleteScheduleRequest(req, res) {
   try {
     const { requestId } = req.params;
 
-    const request = await ScheduleRequest.findByIdAndDelete(requestId);
+    const request = await ScheduleRequest.findById(requestId);
     if (!request) {
       return res.status(404).json({ success: false, message: 'Schedule request not found' });
     }
+
+    // Soft delete: mark as deleted instead of removing from database
+    request.deleted = true;
+    request.deletedAt = new Date();
+    await request.save();
 
     res.json({ success: true, message: 'Schedule request deleted successfully' });
   } catch (error) {

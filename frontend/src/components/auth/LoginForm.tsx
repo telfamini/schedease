@@ -328,7 +328,6 @@ export function LoginForm() {
                       <SelectContent className="bg-white border border-gray-200 shadow-lg">
                         <SelectItem value="student">Student</SelectItem>
                         <SelectItem value="instructor">Instructor</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
                       </SelectContent>
                     </Select>
                     {validationErrors.role && (
@@ -338,14 +337,20 @@ export function LoginForm() {
 
                   <div className="space-y-2">
                     <Label htmlFor="register-department">Department</Label>
-                    <Input
-                      id="register-department"
-                      type="text"
-                      placeholder="Enter your department"
+                    <Select
                       value={registerData.department}
-                      onChange={(e) => setRegisterData({ ...registerData, department: e.target.value })}
-                      className={validationErrors.department ? 'border-red-500' : ''}
-                    />
+                      onValueChange={(value) => setRegisterData({ ...registerData, department: value })}
+                    >
+                      <SelectTrigger className={validationErrors.department ? 'border-red-500' : ''}>
+                        <SelectValue placeholder="Select your department" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border border-gray-200 shadow-lg">
+                        <SelectItem value="CAAD">CAAD - Civil and Allied Department</SelectItem>
+                        <SelectItem value="MAAD">MAAD - Mechanical and Allied Department</SelectItem>
+                        <SelectItem value="EAAD">EAAD - Electrical and Allied Department</SelectItem>
+                        <SelectItem value="BASD">BASD - Basic Arts and Sciences Department</SelectItem>
+                      </SelectContent>
+                    </Select>
                     {validationErrors.department && (
                       <p className="text-sm text-red-500">{validationErrors.department}</p>
                     )}
@@ -364,10 +369,10 @@ export function LoginForm() {
                           }}
                         >
                           <SelectTrigger className={(validationErrors.section || validationErrors.year) ? 'border-red-500' : ''}>
-                            <SelectValue placeholder="Select your section (1A, 1B, 2A, 2B, 3A, 3C, 4A, 4B)" />
+                            <SelectValue placeholder="Select your section (1A, 1B, 2A, 2B, 3A, 3B, 4A, 4B)" />
                           </SelectTrigger>
                           <SelectContent className="bg-white border border-gray-200 shadow-lg">
-                            {['1A','1B','2A','2B','3A','3C','4A','4B'].map((sec) => (
+                            {['1A','1B','2A','2B','3A','3B','4A','4B'].map((sec) => (
                               <SelectItem key={sec} value={sec}>{sec}</SelectItem>
                             ))}
                           </SelectContent>

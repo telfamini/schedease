@@ -104,6 +104,7 @@ interface RequestFormData {
   courseId: string;
   roomId: string;
   scheduleId?: string;
+  targetInstructorId?: string;
   date: string;
   dayOfWeek: string;
   startTime: string;
@@ -205,6 +206,10 @@ export function InstructorDashboard() {
   const [borrowableSchedules, setBorrowableSchedules] = useState<BorrowableSchedule[]>([]);
   const [borrowSchedulesLoading, setBorrowSchedulesLoading] = useState(false);
   const [selectedBorrowSchedule, setSelectedBorrowSchedule] = useState<BorrowableSchedule | null>(null);
+  const [instructors, setInstructors] = useState<Array<{ _id: string; userId: { name: string; _id: string } }>>([]);
+  const [loadingInstructors, setLoadingInstructors] = useState(false);
+  const [instructorSchedules, setInstructorSchedules] = useState<BorrowableSchedule[]>([]);
+  const [loadingInstructorSchedules, setLoadingInstructorSchedules] = useState(false);
   const [instructorProfileId, setInstructorProfileId] = useState<string | null>(null);
   const [availability, setAvailability] = useState<Availability>(DEFAULT_AVAILABILITY);
   const [editingDay, setEditingDay] = useState<string | null>(null);
@@ -296,7 +301,7 @@ export function InstructorDashboard() {
 
   useEffect(() => {
     if (showRequestDialog && requestForm.requestType === 'borrow_schedule') {
-      loadBorrowableSchedules();
+      loadInstructors();
     }
   }, [showRequestDialog, requestForm.requestType]);
 
@@ -759,6 +764,71 @@ export function InstructorDashboard() {
     } catch (error: any) {
       console.error('Failed to approve borrow request:', error);
       toast.error(error.message || 'Failed to process request');
+    }
+  };
+
+  const loadInstructors = async () => {
+    if (loadingInstructors || instructors.length > 0) return;
+    try {
+      setLoadingInstructors(true);
+      const res = await apiService.getInstructors();
+      let instructorsList: any[] = [];
+      if (res?.instructors) instructorsList = res.instructors;
+      else if (res?.data) instructorsList = res.data;
+      else if (Array.isArray(res)) instructorsList = res;
+      
+      // Filter out the current instructor
+      const filtered = instructorsList.filter((inst: any) => {
+        return String(inst._id) !== String(instructorProfileId);
+      });
+      
+      setInstructors(filtered);
+    } catch (error) {
+      console.error('Failed to load instructors:', error);
+      toast.error('Failed to load instructors');
+      setInstructors([]);
+    } finally {
+      setLoadingInstructors(false);
+    }
+  };
+
+  const loadInstructorSchedules = async (instructorId: string) => {
+    try {
+      setLoadingInstructorSchedules(true);
+      const res = await apiService.getSchedules();
+      const schedules = res?.schedules || res?.data || [];
+      const filtered: BorrowableSchedule[] = schedules
+        .filter((schedule: any) => {
+          const scheduleInstructorId = schedule.instructorId?._id || schedule.instructorId;
+          return String(scheduleInstructorId) === String(instructorId);
+        })
+        .map((schedule: any) => {
+          const instructorDoc = schedule.instructorId || {};
+          const instructorUser = instructorDoc.userId || {};
+          return {
+            _id: String(schedule._id || schedule.id),
+            courseId: String(schedule.courseId?._id || schedule.courseId || ''),
+            courseName: schedule.courseId?.name || schedule.courseName || '',
+            courseCode: schedule.courseId?.code || schedule.courseCode || '',
+            instructorId: String(instructorDoc._id || schedule.instructorId || ''),
+            instructorName: instructorUser.name || schedule.instructorName || 'Unknown Instructor',
+            roomId: String(schedule.roomId?._id || schedule.roomId || ''),
+            roomName: schedule.roomId?.name || schedule.roomName || '',
+            dayOfWeek: schedule.dayOfWeek || '',
+            startTime: schedule.startTime || '',
+            endTime: schedule.endTime || '',
+            semester: schedule.semester,
+            year: schedule.year,
+            academicYear: schedule.academicYear
+          };
+        });
+      setInstructorSchedules(filtered);
+    } catch (error) {
+      console.error('Failed to load instructor schedules:', error);
+      toast.error('Failed to load instructor schedules');
+      setInstructorSchedules([]);
+    } finally {
+      setLoadingInstructorSchedules(false);
     }
   };
 
@@ -2028,14 +2098,14 @@ export function InstructorDashboard() {
                   New Request
                 </Button>
               </DialogTrigger>
-              <DialogContent className="bg-white max-w-5xl w-[95vw] max-h-[90vh] overflow-hidden">
+              <DialogContent className="bg-white max-w-3xl w-[90vw] max-h-[90vh] overflow-hidden">
                 <DialogHeader>
                   <DialogTitle>Submit Schedule Request</DialogTitle>
                   <DialogDescription>
                     Request a change to your schedule or report a conflict
                   </DialogDescription>
                 </DialogHeader>
-                <form onSubmit={handleSubmitRequest} className="space-y-4 md:grid md:grid-cols-2 md:gap-6 md:space-y-0 max-h-[75vh] overflow-auto pr-2">
+                <form onSubmit={handleSubmitRequest} className="space-y-4 max-h-[75vh] overflow-auto pr-2">
                   <div className="space-y-2">
                     <Label htmlFor="requestType">Request Type</Label>
                     <Select
@@ -2065,139 +2135,190 @@ export function InstructorDashboard() {
                       </SelectContent>
                     </Select>
                   </div>
-
                   {isBorrowRequest ? (
-                    <div className="space-y-2">
-                      <Label>Course</Label>
-                      <div className="rounded-md border bg-gray-50 p-3 text-sm text-gray-700">
-                        {selectedBorrowSchedule
-                          ? `${selectedBorrowSchedule.courseCode} - ${selectedBorrowSchedule.courseName}`
-                          : 'Select a schedule to borrow'}
-                      </div>
-                    </div>
-                  ) : (
-                  <div className="space-y-2">
-                    <Label htmlFor="courseId">Course</Label>
-                    <Select value={requestForm.courseId} onValueChange={(value) => setRequestForm(prev => ({ ...prev, courseId: value, scheduleId: '' }))}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select course" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border border-gray-200 shadow-lg">
-                        {courses.map(course => (
-                          <SelectItem key={course._id} value={course._id}>
-                            {course.code} - {course.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  )}
-
-                  <div className="space-y-2">
-                    {isBorrowRequest ? (
-                      <>
-                        <Label htmlFor="borrowScheduleId">Schedule to Borrow</Label>
-                        <Select
-                          value={requestForm.scheduleId || ''}
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="targetInstructorId" className="text-sm font-medium">Instructor (who you want to borrow from)</Label>
+                        <Select 
+                          value={requestForm.targetInstructorId || ''}
                           onValueChange={(value) => {
-                            const selected = borrowableSchedules.find(item => item._id === value) || null;
-                            setSelectedBorrowSchedule(selected);
-                            
-                            // Auto-set the date to the next occurrence of the schedule's day
-                            const nextValidDate = selected?.dayOfWeek 
-                              ? getNextDateForDayOfWeek(selected.dayOfWeek)
-                              : '';
-                            
-                            setRequestForm(prev => ({
-                              ...prev,
-                              scheduleId: value,
-                              courseId: selected?.courseId || '',
-                              roomId: selected?.roomId || '',
-                              dayOfWeek: selected?.dayOfWeek || '',
-                              startTime: selected?.startTime || '',
-                              endTime: selected?.endTime || '',
-                              semester: selected?.semester || prev.semester,
-                              year: selected?.year || prev.year,
-                              purpose: 'borrow schedule',
-                              date: nextValidDate || prev.date
+                            setRequestForm(prev => ({ 
+                              ...prev, 
+                              targetInstructorId: value,
+                              scheduleId: '',
+                              date: '',
+                              startTime: '',
+                              endTime: '',
+                              dayOfWeek: '',
+                              courseId: '',
+                              roomId: ''
                             }));
+                            setInstructorSchedules([]);
+                            if (value) {
+                              loadInstructorSchedules(value);
+                            }
                           }}
                         >
-                          <SelectTrigger>
-                            <SelectValue placeholder={borrowSchedulesLoading ? 'Loading schedules...' : 'Select schedule to borrow'} />
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder={loadingInstructors ? 'Loading instructors...' : 'Select instructor'} />
                           </SelectTrigger>
                           <SelectContent className="bg-white border border-gray-200 shadow-lg max-h-[300px] overflow-y-auto">
-                            {borrowSchedulesLoading ? (
+                            {loadingInstructors ? (
                               <div className="p-4 text-center flex items-center justify-center gap-2 text-sm text-gray-600">
                                 <LoadingSpinner size="sm" />
-                                Fetching schedules...
+                                Loading instructors...
                               </div>
-                            ) : borrowableSchedules.length > 0 ? (
-                              borrowableSchedules.map(schedule => (
-                                <SelectItem key={schedule._id} value={schedule._id}>
-                                  {schedule.courseCode} • {schedule.dayOfWeek} {schedule.startTime}-{schedule.endTime} • {schedule.roomName} ({schedule.instructorName})
+                            ) : instructors.length > 0 ? (
+                              instructors.map(instructor => (
+                                <SelectItem key={instructor._id} value={instructor._id}>
+                                  {instructor.userId?.name || 'Unknown Instructor'}
                                 </SelectItem>
                               ))
                             ) : (
                               <SelectItem value="none" disabled>
-                                No schedules available to borrow
+                                No instructors available
                               </SelectItem>
                             )}
                           </SelectContent>
                         </Select>
-                        <p className="text-xs text-gray-500">
-                          {selectedBorrowSchedule
-                            ? `Currently assigned to ${selectedBorrowSchedule.instructorName}.`
-                            : 'Choose a schedule from another instructor to request a takeover.'}
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                    <Label htmlFor="scheduleId">Schedule</Label>
-                    <Select 
-                      value={requestForm.scheduleId || ''}
-                      onValueChange={(value) => setRequestForm(prev => ({ ...prev, scheduleId: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select schedule (optional)" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border border-gray-200 shadow-lg">
-                        {schedules
-                          .filter(s => !requestForm.courseId || String(s.courseId) === String(requestForm.courseId))
-                          .map(s => (
-                            <SelectItem key={s._id} value={s._id}>
-                              {s.dayOfWeek} {s.startTime}-{s.endTime} • {s.roomName}
-                            </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-gray-500">Only your schedules are listed.</p>
-                      </>
-                    )}
-                  </div>
+                      </div>
 
-                  {isBorrowRequest ? (
-                    <div className="md:col-span-2 space-y-3">
-                      <Label>Current Assignment</Label>
-                      <div className="rounded-md border bg-gray-50 p-3 text-sm text-gray-700 leading-relaxed">
-                        {selectedBorrowSchedule ? (
-                          <>
-                            <div><span className="font-medium">Room:</span> {selectedBorrowSchedule.roomName}</div>
-                            <div><span className="font-medium">Day:</span> {selectedBorrowSchedule.dayOfWeek}</div>
-                            <div><span className="font-medium">Time:</span> {selectedBorrowSchedule.startTime} - {selectedBorrowSchedule.endTime}</div>
-                            <div><span className="font-medium">Instructor:</span> {selectedBorrowSchedule.instructorName}</div>
-                          </>
-                        ) : (
-                          <span>Select a schedule to see its existing assignment.</span>
+                      <div className="space-y-2">
+                        <Label htmlFor="borrowSchedule" className="text-sm font-medium">Date & Time</Label>
+                        <Select
+                          value={requestForm.scheduleId || ''}
+                          onValueChange={(value) => {
+                            const selected = instructorSchedules.find(s => s._id === value);
+                            if (selected) {
+                              // Find the next occurrence of this day
+                              const today = new Date();
+                              const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                              const targetDay = days.indexOf(selected.dayOfWeek);
+                              const currentDay = today.getDay();
+                              let daysUntilTarget = targetDay - currentDay;
+                              if (daysUntilTarget <= 0) daysUntilTarget += 7;
+                              
+                              const nextDate = new Date(today);
+                              nextDate.setDate(today.getDate() + daysUntilTarget);
+                              const dateString = nextDate.toISOString().split('T')[0];
+                              
+                              setRequestForm(prev => ({
+                                ...prev,
+                                scheduleId: value,
+                                date: dateString,
+                                dayOfWeek: selected.dayOfWeek,
+                                startTime: selected.startTime,
+                                endTime: selected.endTime,
+                                courseId: selected.courseId,
+                                roomId: selected.roomId
+                              }));
+                            }
+                          }}
+                          disabled={!requestForm.targetInstructorId}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder={
+                              !requestForm.targetInstructorId 
+                                ? 'Select instructor first' 
+                                : loadingInstructorSchedules 
+                                  ? 'Loading schedules...' 
+                                  : 'Select date & time'
+                            } />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white border border-gray-200 shadow-lg max-h-[300px] overflow-y-auto">
+                            {loadingInstructorSchedules ? (
+                              <div className="p-4 text-center flex items-center justify-center gap-2 text-sm text-gray-600">
+                                <LoadingSpinner size="sm" />
+                                Loading schedules...
+                              </div>
+                            ) : instructorSchedules.length > 0 ? (
+                              instructorSchedules.map(schedule => (
+                                <SelectItem key={schedule._id} value={schedule._id}>
+                                  {schedule.dayOfWeek} • {schedule.startTime}-{schedule.endTime} • {schedule.courseCode} ({schedule.roomName})
+                                </SelectItem>
+                              ))
+                            ) : (
+                              <SelectItem value="none" disabled>
+                                No schedules available
+                              </SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                        {requestForm.scheduleId && (
+                          <p className="text-xs text-gray-500">
+                            Next occurrence: {requestForm.date ? new Date(requestForm.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : ''}
+                          </p>
                         )}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="borrowPurpose" className="text-sm font-medium">Purpose</Label>
+                        <Select
+                          value={requestForm.purpose}
+                          onValueChange={(value) => setRequestForm(prev => ({ ...prev, purpose: value }))}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select purpose" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white border border-gray-200 shadow-lg">
+                            <SelectItem value="make-up class">Make-up Class</SelectItem>
+                            <SelectItem value="quiz">Quiz</SelectItem>
+                            <SelectItem value="unit test">Unit Test</SelectItem>
+                            <SelectItem value="exam">Exam</SelectItem>
+                            <SelectItem value="special lecture">Special Lecture</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
                   ) : (
-                  <div className="md:col-span-2">
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="minCapacity">Minimum Capacity</Label>
+                    <div className="space-y-2">
+                      <Label htmlFor="courseId">Course</Label>
+                      <Select value={requestForm.courseId} onValueChange={(value) => setRequestForm(prev => ({ ...prev, courseId: value, scheduleId: '' }))}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select course" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border border-gray-200 shadow-lg">
+                          {courses.map(course => (
+                            <SelectItem key={course._id} value={course._id}>
+                              {course.code} - {course.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+              {!isBorrowRequest && (
+              <div className="space-y-2">
+                <Label htmlFor="scheduleId">Schedule</Label>
+                <Select 
+                  value={requestForm.scheduleId || ''}
+                  onValueChange={(value) => setRequestForm(prev => ({ ...prev, scheduleId: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select schedule (optional)" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border border-gray-200 shadow-lg">
+                    {schedules
+                      .filter(s => !requestForm.courseId || String(s.courseId) === String(requestForm.courseId))
+                      .map(s => (
+                        <SelectItem key={s._id} value={s._id}>
+                          {s.dayOfWeek} {s.startTime}-{s.endTime} • {s.roomName}
+                        </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500">Only your schedules are listed.</p>
+              </div>
+              )}
+
+              {!isBorrowRequest && (
+              <div className="md:col-span-2">
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="minCapacity">Minimum Capacity</Label>
                           <Input
                             type="text"
                             inputMode="numeric"
@@ -2381,7 +2502,6 @@ export function InstructorDashboard() {
                       id="startTime"
                       value={requestForm.startTime}
                       onChange={(e) => {
-                        if (isBorrowRequest) return;
                         const newStartTime = e.target.value;
                         setRequestForm(prev => ({ ...prev, startTime: newStartTime }));
                         if (requestForm.date && newStartTime && requestForm.endTime) {

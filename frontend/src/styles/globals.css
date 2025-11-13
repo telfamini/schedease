@@ -117,6 +117,13 @@ html.dark body {
   color: hsl(var(--foreground));
 }
 
+/* Ensure proper text colors in light mode cards */
+html:not(.dark) [data-slot="card"],
+html:not(.dark) .card,
+html:not(.dark) .panel {
+  color: hsl(222.2 84% 4.9%) !important;
+}
+
 /* Ensure common light backgrounds adapt in dark mode */
 html.dark .bg-white,
 html.dark .bg-background,

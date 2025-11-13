@@ -16,7 +16,8 @@ import { getUsers, getUserById, createUser, updateUser, deleteUser } from './api
 import { getScheduleRequests, getInstructorScheduleRequests, createScheduleRequest, updateScheduleRequestStatus, approveScheduleRequest, rejectScheduleRequest, deleteScheduleRequest, approveBorrowRequestByInstructor, getBorrowRequestsForInstructor } from './api/schedule-requests.js';
 import { getStudents } from './api/admin/students.js';
 import { importSubjects } from './api/admin/subjects-import.js';
-import { getMySubjects } from './api/student.js';
+import { diagnoseCourses, fixCourses } from './api/admin/courses-fix.js';
+import { getMySubjects, getCurriculum } from './api/student.js';
 import { getEnrollments, getStudentEnrollments, getMyEnrollments, getInstructorEnrollments, getScheduleEnrollments, createEnrollment, deleteEnrollment } from './api/enrollments.js';
 
 // Router-style routes
@@ -102,8 +103,12 @@ app.get('/api/subjects', requireAuth, getSubjects);
 app.get('/api/admin/students', requireAuth, requireAdmin, getStudents);
 // Admin: import possible subjects from Excel
 app.post('/api/admin/subjects/import', requireAuth, requireAdmin, importSubjects);
+// Admin: diagnose and fix course fields
+app.get('/api/admin/courses/diagnose', requireAuth, requireAdmin, diagnoseCourses);
+app.post('/api/admin/courses/fix', requireAuth, requireAdmin, fixCourses);
 
 // Student routes
+app.get('/api/student/curriculum', requireAuth, getCurriculum);
 app.get('/api/student/subjects', requireAuth, getMySubjects);
 
 // Enrollment routes

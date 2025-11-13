@@ -443,6 +443,43 @@ export function AdminEnrollmentManagement() {
     return a.studentName.localeCompare(b.studentName);
   };
 
+  // Filter enrolled students based on filters
+  const filteredEnrolledStudents = enrolledStudents.filter((student) => {
+    // Year level filter
+    if (filters.yearLevel !== 'all' && student.yearLevel !== filters.yearLevel) {
+      return false;
+    }
+    
+    // Section filter
+    if (filters.section !== 'all' && !student.section.includes(filters.section)) {
+      return false;
+    }
+    
+    // Department filter
+    if (filters.department !== 'all' && student.department !== filters.department) {
+      return false;
+    }
+    
+    // Semester filter
+    if (filters.semester !== 'all' && student.semester !== filters.semester) {
+      return false;
+    }
+    
+    // Search filter (search in student name or course code/name)
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase();
+      const matchesName = student.studentName.toLowerCase().includes(searchLower);
+      const matchesCourseCode = student.courseCode.toLowerCase().includes(searchLower);
+      const matchesCourseName = student.courseName.toLowerCase().includes(searchLower);
+      
+      if (!matchesName && !matchesCourseCode && !matchesCourseName) {
+        return false;
+      }
+    }
+    
+    return true;
+  });
+
   // Filter students for enrollment dialog
   const enrollmentDialogFilteredStudents = allStudents.filter((s: any) => {
     const studentYear = String(s.year || s.yearLevel || '');
@@ -848,7 +885,7 @@ export function AdminEnrollmentManagement() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {[...enrolledStudents].sort(sortEnrolledStudents).map((student) => (
+              {[...filteredEnrolledStudents].sort(sortEnrolledStudents).map((student) => (
                 <TableRow key={student.id}>
                   <TableCell>{student.studentName}</TableCell>
                   <TableCell>{student.yearLevel}</TableCell>
@@ -864,7 +901,7 @@ export function AdminEnrollmentManagement() {
                   <TableCell>{`${student.semester} ${student.academicYear}`}</TableCell>
                 </TableRow>
               ))}
-              {enrolledStudents.length === 0 && (
+              {filteredEnrolledStudents.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-4">
                     {loading ? 'Loading...' : 'No enrolled students found'}
@@ -885,16 +922,16 @@ export function AdminEnrollmentManagement() {
         </CardHeader>
         <CardContent className="bg-gray-50 p-6">
           <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm mb-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Schedule & Filters</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Courses Available</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-700">Select Schedule <span className="text-red-500">*</span></label>
+                <label className="text-sm font-semibold text-gray-700">Select Course <span className="text-red-500">*</span></label>
               <Select
                 value={selectedSchedule?._id || ''}
                 onValueChange={(val) => setSelectedSchedule(schedules.find(s => s._id === val) || null)}
               >
                 <SelectTrigger className="w-full bg-white border-2 border-gray-300 hover:border-blue-400 focus:border-blue-500 h-11">
-                  <SelectValue placeholder="Choose schedule" />
+                  <SelectValue placeholder="Choose course" />
                 </SelectTrigger>
                 <SelectContent 
                   className="!bg-white !border-2 !border-gray-300 !shadow-xl rounded-lg max-h-[400px] z-50 min-w-[450px]"

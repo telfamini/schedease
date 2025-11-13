@@ -667,6 +667,27 @@ import { generateComprehensiveSchedule } from './schedules-autogen.js';
 router.get('/', getSchedules);
 router.get('/instructor/:instructorId', getInstructorSchedules);
 router.get('/student/:studentId', getStudentSchedules);
+router.get('/available-terms', async (req, res) => {
+  try {
+    // Get distinct semesters and year levels from courses
+    const semesters = await Course.distinct('semester');
+    const yearLevels = await Course.distinct('yearLevel');
+    
+    res.json({
+      success: true,
+      data: {
+        semesters: semesters.filter(Boolean), // Remove null/undefined
+        yearLevels: yearLevels.filter(Boolean).sort()
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching available terms:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch available terms'
+    });
+  }
+});
 router.post('/', createSchedule);
 router.put('/:id', updateSchedule);
 router.delete('/:id', deleteSchedule);

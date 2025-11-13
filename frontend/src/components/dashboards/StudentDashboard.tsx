@@ -64,6 +64,26 @@ interface Course {
   attendance?: number;
 }
 
+interface CurriculumCourse {
+  id: string;
+  code: string;
+  name: string;
+  credits: number;
+  type: string;
+  duration: number;
+  instructorName?: string;
+  yearLevel: string;
+  semester: string;
+  department: string;
+}
+
+interface Curriculum {
+  '1': { 'First Term': CurriculumCourse[]; 'Second Term': CurriculumCourse[]; 'Third Term': CurriculumCourse[] };
+  '2': { 'First Term': CurriculumCourse[]; 'Second Term': CurriculumCourse[]; 'Third Term': CurriculumCourse[] };
+  '3': { 'First Term': CurriculumCourse[]; 'Second Term': CurriculumCourse[]; 'Third Term': CurriculumCourse[] };
+  '4': { 'First Term': CurriculumCourse[]; 'Second Term': CurriculumCourse[]; 'Third Term': CurriculumCourse[] };
+}
+
 interface Grade {
   _id: string;
   courseId: string;
@@ -100,11 +120,13 @@ export function StudentDashboard() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [grades, setGrades] = useState<Grade[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [curriculum, setCurriculum] = useState<Curriculum | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [showCourseDialog, setShowCourseDialog] = useState(false);
   const [showProfileDialog, setShowProfileDialog] = useState(false);
+  const [scheduleView, setScheduleView] = useState<'list' | 'calendar'>('list');
   const [profileForm, setProfileForm] = useState({
     name: user?.name || '',
     email: user?.email || '',
@@ -133,6 +155,12 @@ export function StudentDashboard() {
       active: activeTab === 'courses'
     },
     {
+      icon: BookOpenCheck,
+      label: 'Curriculum',
+      onClick: () => setActiveTab('curriculum'),
+      active: activeTab === 'curriculum'
+    },
+    {
       icon: GraduationCap,
       label: 'Grades',
       onClick: () => setActiveTab('grades'),
@@ -154,7 +182,34 @@ export function StudentDashboard() {
 
   useEffect(() => {
     loadStudentData();
+    loadCurriculum();
   }, []);
+
+  const loadCurriculum = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:3001/api/student/curriculum', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Curriculum API response:', result);
+        if (result.success && result.data) {
+          console.log('Setting curriculum data:', result.data);
+          setCurriculum(result.data);
+        } else {
+          console.log('No curriculum data in response');
+        }
+      } else {
+        console.error('Curriculum API failed with status:', response.status);
+      }
+    } catch (error) {
+      console.error('Failed to load curriculum:', error);
+    }
+  };
 
   const loadStudentData = async () => {
     try {
@@ -402,6 +457,7 @@ export function StudentDashboard() {
       case 'overview': return 'Student Dashboard';
       case 'schedule': return 'My Schedule';
       case 'courses': return 'My Courses';
+      case 'curriculum': return 'Curriculum';
       case 'grades': return 'My Grades';
       case 'announcements': return 'Announcements';
       case 'profile': return 'My Profile';
@@ -687,6 +743,92 @@ export function StudentDashboard() {
 
   const ScheduleContent = () => (
     <div className="space-y-6">
+      {/* View Toggle */}
+      <div className="flex justify-end gap-2">
+        <Button
+          variant={scheduleView === 'list' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setScheduleView('list')}
+        >
+          <CalendarDays className="h-4 w-4 mr-2" />
+          List View
+        </Button>
+        <Button
+          variant={scheduleView === 'calendar' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setScheduleView('calendar')}
+        >
+          <Calendar className="h-4 w-4 mr-2" />
+          Calendar View
+        </Button>
+      </div>
+
+      {scheduleView === 'calendar' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5" />
+              Weekly Calendar
+            </CardTitle>
+            <CardDescription>Your class schedule in calendar format</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <div className="min-w-[800px]">
+                {/* Calendar Header */}
+                <div className="grid grid-cols-7 border-b border-gray-300 dark:border-gray-700">
+                  <div className="p-2 border-r border-gray-300 dark:border-gray-700 font-semibold text-sm text-gray-700 dark:text-gray-200">Time</div>
+                  {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map(day => (
+                    <div key={day} className="p-2 border-r border-gray-300 dark:border-gray-700 font-semibold text-sm text-center text-gray-700 dark:text-gray-200">
+                      {day}
+                    </div>
+                  ))}
+                </div>
+                
+                {/* Calendar Grid */}
+                {Array.from({ length: 12 }, (_, i) => i + 7).map(hour => (
+                  <div key={hour} className="grid grid-cols-7">
+                    <div className="p-2 border-r border-b border-gray-300 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900">
+                      {hour}:00
+                    </div>
+                    {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map(day => {
+                      const daySchedules = schedules.filter(s => {
+                        if (s.dayOfWeek !== day) return false;
+                        const startHour = parseInt(s.startTime.split(':')[0]);
+                        return startHour === hour;
+                      });
+                      
+                      return (
+                        <div key={day} className="border-r border-b border-gray-200 dark:border-gray-700 relative min-h-[60px] bg-white dark:bg-gray-800">
+                          {daySchedules.map(schedule => (
+                            <div
+                              key={schedule._id}
+                              className="absolute inset-x-1 rounded p-2 text-white text-xs overflow-hidden"
+                              style={{
+                                backgroundColor: `hsl(${Math.random() * 360}, 70%, 50%)`,
+                                top: '2px',
+                                bottom: '2px'
+                              }}
+                            >
+                              <p className="font-bold truncate">{schedule.courseCode}</p>
+                              <p className="truncate text-xs">{schedule.courseName}</p>
+                              <p className="text-xs">{schedule.startTime} - {schedule.endTime}</p>
+                              <p className="text-xs truncate">{schedule.roomName}</p>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {scheduleView === 'list' && (
+        <>
       {/* Grouped by semester */}
       {Object.keys(scheduleTerms).length > 0 && (
         <Card>
@@ -768,6 +910,8 @@ export function StudentDashboard() {
           </div>
         </CardContent>
       </Card>
+        </>
+      )}
     </div>
   );
 
@@ -882,6 +1026,106 @@ export function StudentDashboard() {
       </Dialog>
     </div>
   );
+
+  const CurriculumContent = () => {
+    if (!curriculum) {
+      return (
+        <div className="flex items-center justify-center h-64">
+          <LoadingSpinner size="lg" />
+        </div>
+      );
+    }
+
+    const years = ['1', '2', '3', '4'];
+    const terms = ['First Term', 'Second Term', 'Third Term'];
+
+    return (
+      <div className="space-y-8">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BookOpenCheck className="h-5 w-5" />
+              Program Curriculum
+            </CardTitle>
+            <CardDescription>Complete course listing organized by year and term</CardDescription>
+          </CardHeader>
+        </Card>
+
+        {years.map((year) => (
+          <div key={year} className="space-y-4">
+            <h2 className="text-2xl font-bold text-gray-900">Year {year}</h2>
+            
+            {terms.map((term) => {
+              const courses = curriculum[year as keyof Curriculum]?.[term as keyof typeof curriculum['1']] || [];
+              const totalCredits = courses.reduce((sum, course) => sum + (course.credits || 0), 0);
+              
+              return (
+                <Card key={term}>
+                  <CardHeader>
+                    <div className="flex justify-between items-center">
+                      <CardTitle className="text-lg">{term}</CardTitle>
+                      <Badge variant="outline" className="text-sm">
+                        {totalCredits} {totalCredits === 1 ? 'Credit' : 'Credits'}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {courses.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Course Code</TableHead>
+                              <TableHead>Course Name</TableHead>
+                              <TableHead>Type</TableHead>
+                              <TableHead>Credits</TableHead>
+                              <TableHead>Duration</TableHead>
+                              <TableHead>Instructor</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {courses.map((course) => (
+                              <TableRow key={course.id}>
+                                <TableCell className="font-medium">{course.code}</TableCell>
+                                <TableCell>{course.name}</TableCell>
+                                <TableCell>
+                                  <Badge 
+                                    variant="outline"
+                                    className={
+                                      course.type === 'lecture' 
+                                        ? 'bg-blue-50 text-blue-700 border-blue-200' 
+                                        : course.type === 'lab'
+                                        ? 'bg-green-50 text-green-700 border-green-200'
+                                        : 'bg-purple-50 text-purple-700 border-purple-200'
+                                    }
+                                  >
+                                    {course.type}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>{course.credits}</TableCell>
+                                <TableCell>{course.duration} mins</TableCell>
+                                <TableCell className="text-sm text-muted-foreground">
+                                  {course.instructorName || 'TBA'}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground">
+                        No courses available for this term
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   const GradesContent = () => (
     <div className="space-y-6">
@@ -1173,6 +1417,7 @@ export function StudentDashboard() {
       {activeTab === 'overview' && <OverviewContent />}
       {activeTab === 'schedule' && <ScheduleContent />}
       {activeTab === 'courses' && <CoursesContent />}
+      {activeTab === 'curriculum' && <CurriculumContent />}
       {activeTab === 'grades' && <GradesContent />}
       {activeTab === 'announcements' && <AnnouncementsContent />}
       {activeTab === 'profile' && <ProfileContent />}

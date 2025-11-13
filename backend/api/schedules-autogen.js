@@ -269,6 +269,7 @@ export async function generateComprehensiveSchedule(params) {
         scheduleDate: s.scheduleDate, // Include actual date
         startTime: s.startTime,
         endTime: s.endTime,
+        duration: s.duration, // Preserve exact course duration from database
         semester,
         year,
         academicYear,
@@ -376,7 +377,10 @@ async function scheduleCourseToBestSlot(params) {
 
   const startMinutes = toMinutes(startTime);
   const endMinutes = toMinutes(endTime);
-  const courseDuration = course.duration || 90;
+  
+  // IMPORTANT: Use exact course duration from database - do NOT shorten or modify
+  // Only admins can manually adjust durations when editing schedules
+  const courseDuration = course.duration || 90; // Default to 90 minutes only if not set
 
   // Find suitable instructor
   const instructor = findSuitableInstructor(course, instructors);
@@ -396,16 +400,18 @@ async function scheduleCourseToBestSlot(params) {
     };
   }
 
-  // Define lunch break period (12:30 PM - 1:00 PM)
-  const LUNCH_START = toMinutes('12:30'); // 750 minutes
-  const LUNCH_END = toMinutes('13:00');   // 780 minutes
-
   // Try each day
   for (const day of validDays) {
     // Skip if this day-of-week doesn't occur within the 14-week semester range
     if (!isDayInSemesterRange(day, semesterStart, semesterEnd)) {
       continue;
     }
+
+    // Define lunch break period based on day
+    // Monday-Tuesday, Thursday-Saturday: 12:00 PM - 1:00 PM
+    // Wednesday: 12:00 PM - 2:00 PM
+    const LUNCH_START = toMinutes('12:00'); // 720 minutes
+    const LUNCH_END = day === 'Wednesday' ? toMinutes('14:00') : toMinutes('13:00'); // 840 or 780 minutes
 
     // NOTE: Max classes per day check is done in the OUTER scheduling loop
     // This function only checks time/room/instructor conflicts
@@ -414,10 +420,11 @@ async function scheduleCourseToBestSlot(params) {
     for (let timeSlot = startMinutes; timeSlot + courseDuration <= endMinutes; timeSlot += slotDuration) {
       const slotEnd = timeSlot + courseDuration;
 
-      // Skip if class overlaps with lunch break (12:30 PM - 1:00 PM)
+      // Skip if class overlaps with lunch break
       if (rangesOverlap(timeSlot, slotEnd, LUNCH_START, LUNCH_END)) {
         // Log lunch break conflict for debugging
-        console.log(`⏸️  Lunch break conflict: ${course.code} on ${day} at ${toHHMM(timeSlot)}-${toHHMM(slotEnd)} (12:30-13:00)`);
+        const lunchPeriod = day === 'Wednesday' ? '12:00-14:00' : '12:00-13:00';
+        console.log(`⏸️  Lunch break conflict: ${course.code} on ${day} at ${toHHMM(timeSlot)}-${toHHMM(slotEnd)} (${lunchPeriod})`);
         continue;
       }
 
@@ -460,6 +467,7 @@ async function scheduleCourseToBestSlot(params) {
               scheduleDate: scheduleDate, // Add actual date
               startTime: toHHMM(timeSlot),
               endTime: toHHMM(slotEnd),
+              duration: courseDuration, // Preserve exact course duration from database
               yearLevel,
               section,
               semester,
